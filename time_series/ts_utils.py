@@ -53,7 +53,7 @@ def plot_ts(ts, plot_ma=True, plot_intervals=True, window=30, figsize=(15,5)):
     plt.title(ts.name)
     plt.plot(ts[window:], label='ts', color="black")
     if plot_ma:
-        plt.plot(rolling_mean, 'g', label='MA'+str(window), color="red")
+        plt.plot(rolling_mean, 'g', label=f'MA{str(window)}', color="red")
     if plot_intervals:
         lower_bound = rolling_mean - (1.96 * rolling_std)
         upper_bound = rolling_mean + (1.96 * rolling_std)
@@ -102,7 +102,7 @@ def test_stationarity_acf_pacf(ts, sample=0.20, maxlag=30, figsize=(15,10)):
         ts_ax = plt.subplot2grid(shape=(2,2), loc=(0,0), colspan=2)
         pacf_ax = plt.subplot2grid(shape=(2,2), loc=(1,0))
         acf_ax = plt.subplot2grid(shape=(2,2), loc=(1,1))
-        
+
         ## plot ts with mean/std of a sample from the first x% 
         dtf_ts = ts.to_frame(name="ts")
         sample_size = int(len(ts)*sample)
@@ -121,8 +121,8 @@ def test_stationarity_acf_pacf(ts, sample=0.20, maxlag=30, figsize=(15,10)):
         adf, p, critical_value = adfuller_test[0], adfuller_test[1], adfuller_test[4]["5%"]
         p = round(p, 3)
         conclusion = "Stationary" if p < 0.05 else "Non-Stationary"
-        ts_ax.set_title('Dickey-Fuller Test 95%: '+conclusion+' (p-value: '+str(p)+')')
-        
+        ts_ax.set_title(f'Dickey-Fuller Test 95%: {conclusion} (p-value: {str(p)})')
+
         ## pacf (for AR) e acf (for MA) 
         smt.graphics.plot_pacf(ts, lags=maxlag, ax=pacf_ax, title="Partial Autocorrelation (for AR component)")
         smt.graphics.plot_acf(ts, lags=maxlag, ax=acf_ax, title="Autocorrelation (for MA component)")
@@ -139,7 +139,7 @@ Defferenciate ts.
     :param drop_na: logic - if True Na are dropped, else are filled with last observation
 '''
 def diff_ts(ts, lag=1, order=1, drop_na=True):
-    for i in range(order):
+    for _ in range(order):
         ts = ts - ts.shift(lag)
     ts = ts[(pd.notnull(ts))] if drop_na is True else ts.fillna(method="bfill")
     return ts
@@ -149,7 +149,7 @@ def diff_ts(ts, lag=1, order=1, drop_na=True):
 '''
 '''
 def undo_diff(ts, first_y, lag=1, order=1):
-    for i in range(order):
+    for _ in range(order):
         (24168.04468 - 18256.02366) + a.cumsum()
         ts = np.r_[ts, ts[lag:]].cumsum()
     return ts
@@ -171,7 +171,7 @@ def test_2ts_casuality(ts1, ts2, maxlag=30, figsize=(15,5)):
         p = np.mean([tupla[0][k][1] for k in tupla[0].keys()])
         p = round(p, 3)
         if p < 0.05:
-            conclusion = "Casuality with lag "+str(lag)+" (p-value: "+str(p)+")"
+            conclusion = f"Casuality with lag {str(lag)} (p-value: {str(p)})"
             print(conclusion)
         
 
@@ -316,7 +316,7 @@ def split_train_test(ts, exog=None, test=0.20, plot=True, figsize=(15,5)):
         split = test
         perc = round(len(ts[split:])/len(ts), 2)
     print("--- splitting at index: ", split, "|", ts.index[split], "| test size:", perc, " ---")
-    
+
     ## split ts
     ts_train = ts.head(split)
     ts_test = ts.tail(len(ts)-split)
@@ -327,14 +327,11 @@ def split_train_test(ts, exog=None, test=0.20, plot=True, figsize=(15,5)):
         ax[0].set(xlabel=None)
         ax[1].set(xlabel=None)
         plt.show()
-        
-    ## split exog
-    if exog is not None:
-        exog_train = exog[0:split] 
-        exog_test = exog[split:]
-        return ts_train, ts_test, exog_train, exog_test
-    else:
+
+    if exog is None:
         return ts_train, ts_test
+    exog_train = exog[:split]
+    return ts_train, ts_test, exog_train, exog[split:]
 
 
 
@@ -382,20 +379,20 @@ def utils_evaluate_ts_model(dtf, conf=0.95, title=None, plot=True, figsize=(20,1
         dtf["error"] = dtf["ts"] - dtf["forecast"]
         dtf["error_pct"] = dtf["error"] / dtf["ts"]
         ### kpi
-        error_mean = dtf["error"].mean() 
-        error_std = dtf["error"].std() 
+        error_mean = dtf["error"].mean()
+        error_std = dtf["error"].std()
         mae = dtf["error"].apply(lambda x: np.abs(x)).mean()  #mean absolute error
         mape = dtf["error_pct"].apply(lambda x: np.abs(x)).mean()  #mean absolute error %
-        mse = dtf["error"].apply(lambda x: x**2).mean()  #mean squared error
+        mse = (dtf["error"]**2).mean()
         rmse = np.sqrt(mse)  #root mean squared error
-        
+
         ## interval
         if "upper" not in dtf.columns:
             print("--- computing confidence interval ---")
             dtf["lower"], dtf["upper"] = [np.nan, np.nan]
             dtf.loc[dtf["forecast"].notnull(), ["lower","upper"]] = utils_conf_int(
                 dtf[dtf["forecast"].notnull()]["forecast"], residuals_std, conf)
-        
+
         ## plot
         if plot is True:
             fig = plt.figure(figsize=figsize)
@@ -424,9 +421,9 @@ def utils_evaluate_ts_model(dtf, conf=0.95, title=None, plot=True, figsize=(20,1
             print("Training --> Residuals mean:", np.round(residuals_mean), " | std:", np.round(residuals_std))
             print("Test --> Error mean:", np.round(error_mean), " | std:", np.round(error_std),
                   " | mae:",np.round(mae), " | mape:",np.round(mape*100), "%  | mse:",np.round(mse), " | rmse:",np.round(rmse))
-        
+
         return dtf[["ts", "model", "residuals", "lower", "forecast", "upper", "error"]]
-    
+
     except Exception as e:
         print("--- got error ---")
         print(e)
@@ -467,7 +464,7 @@ def utils_add_forecast_int(dtf, conf=0.95, plot=True, zoom=30, figsize=(15,5)):
     dtf["residuals"] = dtf["ts"] - dtf["model"]
     ### kpi
     residuals_std = dtf["residuals"].std()
-    
+
     ## interval
     if "upper" not in dtf.columns:
         print("--- computing confidence interval ---")
@@ -478,7 +475,7 @@ def utils_add_forecast_int(dtf, conf=0.95, plot=True, zoom=30, figsize=(15,5)):
     ## plot
     if plot is True:
         fig = plt.figure(figsize=figsize)
-        
+
         ### entire series
         ax0 = plt.subplot2grid((1,3), (0,0), rowspan=1, colspan=2)
         dtf[["ts","forecast"]].plot(color=["black","red"], grid=True, ax=ax0, title="History + Future")
@@ -490,7 +487,12 @@ def utils_add_forecast_int(dtf, conf=0.95, plot=True, zoom=30, figsize=(15,5)):
         first_idx = dtf[pd.notnull(dtf["forecast"])].index[0]
         first_loc = dtf.index.tolist().index(first_idx)
         zoom_idx = dtf.index[first_loc-zoom]
-        dtf.loc[zoom_idx:][["ts","forecast"]].plot(color=["black","red"], grid=True, ax=ax1, title="Zoom on the last "+str(zoom)+" observations")
+        dtf.loc[zoom_idx:][["ts", "forecast"]].plot(
+            color=["black", "red"],
+            grid=True,
+            ax=ax1,
+            title=f"Zoom on the last {str(zoom)} observations",
+        )
         ax1.fill_between(x=dtf.loc[zoom_idx:].index, y1=dtf.loc[zoom_idx:]['lower'], y2=dtf.loc[zoom_idx:]['upper'], color='b', alpha=0.2)
         ax1.set(xlabel=None)
         plt.show()
@@ -596,10 +598,10 @@ def tune_expsmooth_model(ts_train, s=7, val_size=0.2, scoring=None, top=None, fi
     ## split
     dtf_fit, dtf_val = model_selection.train_test_split(ts_train, test_size=val_size, shuffle=False)
     dtf_fit, dtf_val = dtf_fit.to_frame(name="ts"), dtf_val.to_frame(name="ts")
-    
+
     ## scoring
     scoring = metrics.mean_absolute_error if scoring is None else scoring   
-    
+
     ## hyperamater space
     trend = ['add', 'mul', None]
     damped = [True, False]
@@ -612,7 +614,7 @@ def tune_expsmooth_model(ts_train, s=7, val_size=0.2, scoring=None, top=None, fi
     for t in trend:
         for d in damped:
             for ss in seasonal:
-                combo = "trend="+str(t)+", damped="+str(d)+", seas="+str(ss)
+                combo = f"trend={str(t)}, damped={str(d)}, seas={str(ss)}"
                 if combo not in combinations:
                     combinations.append(combo)
                     try:
@@ -626,13 +628,13 @@ def tune_expsmooth_model(ts_train, s=7, val_size=0.2, scoring=None, top=None, fi
                             dtf_search = dtf_search.append(pd.DataFrame({"combo":[combo],"score":[score],"model":[model]}))
                     except:
                         continue
-    
+
     ## find best
     dtf_search = dtf_search.sort_values("score").reset_index(drop=True)
     best = dtf_search["combo"].iloc[0]
     dtf_val = dtf_val.rename(columns={best:best+" [BEST]"})
     dtf_val = dtf_val[["ts",best+" [BEST]"] + list(dtf_search["combo"].unique())[1:]]
-    
+
     ## plot
     fig, ax = plt.subplots(nrows=1, ncols=2, figsize=figsize)
     fig.suptitle("Model Tuning", fontsize=15)
@@ -640,7 +642,7 @@ def tune_expsmooth_model(ts_train, s=7, val_size=0.2, scoring=None, top=None, fi
     if (len(combos) <= 7) or ((top is not None) and (top <= 7)):
         colors = ["red","blue","green","violet","sienna","orange","yellow"]
     else: 
-        colors = [tuple(np.random.rand(3,)) for i in range(len(combos))]
+        colors = [tuple(np.random.rand(3,)) for _ in range(len(combos))]
 
     ### main
     ts_train.plot(ax=ax[0], grid=True, color="black", legend=True, label="ts")
@@ -649,11 +651,11 @@ def tune_expsmooth_model(ts_train, s=7, val_size=0.2, scoring=None, top=None, fi
     ax[0].legend(loc="upper left")
     ax[0].set(xlabel=None)
     ### zoom
-    dtf_val["ts"].plot(grid=True, ax=ax[1], color="black", legend=False) 
+    dtf_val["ts"].plot(grid=True, ax=ax[1], color="black", legend=False)
     for i,col in enumerate(combos):
         linewidth = 2 if col == best+" [BEST]" else 1
         dtf_val[col].plot(grid=True, ax=ax[1], color=colors[i], legend=False, linewidth=linewidth)
-    ax[1].set(xlabel=None)  
+    ax[1].set(xlabel=None)
     plt.show()
     return dtf_search
 
@@ -680,23 +682,32 @@ Fits Exponential Smoothing:
 '''
 def fit_expsmooth(ts_train, ts_test, trend="additive", damped=False, seasonal="multiplicative", s=None, factors=(None,None,None), conf=0.95, figsize=(15,10)):
     ## checks
-    check_seasonality = "Seasonal parameters: No Seasonality" if (seasonal is None) & (s is None) else "Seasonal parameters: "+str(seasonal)+" Seasonality every "+str(s)+" observations"
+    check_seasonality = (
+        "Seasonal parameters: No Seasonality"
+        if (seasonal is None) & (s is None)
+        else f"Seasonal parameters: {str(seasonal)} Seasonality every {str(s)} observations"
+    )
     print(check_seasonality)
-    
+
     ## train
     freq = ts_train.index.inferred_freq[0]
     model = smt.ExponentialSmoothing(ts_train, trend=trend, damped=damped, seasonal=seasonal, seasonal_periods=s, freq=freq).fit(factors[0], factors[1], factors[2])
     dtf_train = ts_train.to_frame(name="ts")
     dtf_train["model"] = model.fittedvalues
-    
+
     ## test
     dtf_test = ts_test.to_frame(name="ts")
     dtf_test["forecast"] = model.predict(start=len(ts_train), end=len(ts_train)+len(ts_test)-1)
-    
+
     ## evaluate
     dtf = dtf_train.append(dtf_test)
     alpha, beta, gamma = round(model.params["smoothing_level"],2), round(model.params["smoothing_slope"],2), round(model.params["smoothing_seasonal"],2)
-    dtf = utils_evaluate_ts_model(dtf, conf=conf, figsize=figsize, title="Holt-Winters "+str((alpha, beta, gamma)))
+    dtf = utils_evaluate_ts_model(
+        dtf,
+        conf=conf,
+        figsize=figsize,
+        title=f"Holt-Winters {(alpha, beta, gamma)}",
+    )
     return dtf, model
 
 
@@ -718,10 +729,10 @@ def tune_arima_model(ts_train, s=7, val_size=0.2, max_order=(3,1,3), seasonal_or
     ## split
     dtf_fit, dtf_val = model_selection.train_test_split(ts_train, test_size=val_size, shuffle=False)
     dtf_fit, dtf_val = dtf_fit.to_frame(name="ts"), dtf_val.to_frame(name="ts")
-    
+
     ## scoring
     scoring = metrics.mean_absolute_error if scoring is None else scoring   
-    
+
     ## hyperamater space
     ps = range(0,max_order[0]+1)
     ds = range(0,max_order[1]+1)
@@ -739,7 +750,7 @@ def tune_arima_model(ts_train, s=7, val_size=0.2, max_order=(3,1,3), seasonal_or
                 for P in Ps:
                     for D in Ds:
                         for Q in Qs:
-                            combo = "("+str(p)+","+str(d)+","+str(q)+")x("+str(P)+","+str(D)+","+str(Q)+")"
+                            combo = f"({str(p)},{str(d)},{str(q)})x({str(P)},{str(D)},{str(Q)})"
                             if combo not in combinations:
                                 combinations.append(combo)
                             try:
@@ -753,13 +764,13 @@ def tune_arima_model(ts_train, s=7, val_size=0.2, max_order=(3,1,3), seasonal_or
                                     dtf_search = dtf_search.append(pd.DataFrame({"combo":[combo],"score":[score],"model":[model]}))
                             except:
                                 continue
-    
+
     ## find best
     dtf_search = dtf_search.sort_values("score").reset_index(drop=True)
     best = dtf_search["combo"].iloc[0]
     dtf_val = dtf_val.rename(columns={best:best+" [BEST]"})
     dtf_val = dtf_val[["ts",best+" [BEST]"] + list(dtf_search["combo"].unique())[1:]]
-    
+
     ## plot
     fig, ax = plt.subplots(nrows=1, ncols=2, figsize=figsize)
     fig.suptitle("Model Tuning", fontsize=15)
@@ -767,7 +778,7 @@ def tune_arima_model(ts_train, s=7, val_size=0.2, max_order=(3,1,3), seasonal_or
     if (len(combos) <= 7) or ((top is not None) and (top <= 7)):
         colors = ["red","blue","green","violet","sienna","orange","yellow"]
     else: 
-        colors = [tuple(np.random.rand(3,)) for i in range(len(combos))]
+        colors = [tuple(np.random.rand(3,)) for _ in range(len(combos))]
 
     ### main
     ts_train.plot(ax=ax[0], grid=True, color="black", legend=True, label="ts")
@@ -776,11 +787,11 @@ def tune_arima_model(ts_train, s=7, val_size=0.2, max_order=(3,1,3), seasonal_or
     ax[0].legend(loc="upper left")
     ax[0].set(xlabel=None)
     ### zoom
-    dtf_val["ts"].plot(grid=True, ax=ax[1], color="black", legend=False) 
+    dtf_val["ts"].plot(grid=True, ax=ax[1], color="black", legend=False)
     for i,col in enumerate(combos):
         linewidth = 2 if col == best+" [BEST]" else 1
         dtf_val[col].plot(grid=True, ax=ax[1], color=colors[i], legend=False, linewidth=linewidth)
-    ax[1].set(xlabel=None)  
+    ax[1].set(xlabel=None)
     plt.show()
     return dtf_search
 
@@ -825,18 +836,30 @@ Fits SARIMAX (Seasonal ARIMA with External Regressors) (p,d,q)x(P,D,Q,s):
 '''
 def fit_sarimax(ts_train, ts_test, order=(1,0,1), seasonal_order=(1,0,1), s=7, exog_train=None, exog_test=None, conf=0.95, figsize=(15,10)):
     ## checks
-    check_trend = "Trend parameters: No differencing" if order[1] == 0 else "Trend parameters: d="+str(order[1])
+    check_trend = (
+        "Trend parameters: No differencing"
+        if order[1] == 0
+        else f"Trend parameters: d={str(order[1])}"
+    )
     print(check_trend)
-    check_seasonality = "Seasonal parameters: No Seasonality" if (s == 0) & (np.sum(seasonal_order[0:2]) == 0) else "Seasonal parameters: Seasonality every "+str(s)+" observations"
+    check_seasonality = (
+        "Seasonal parameters: No Seasonality"
+        if (s == 0) & (np.sum(seasonal_order[:2]) == 0)
+        else f"Seasonal parameters: Seasonality every {str(s)} observations"
+    )
     print(check_seasonality)
-    check_exog = "Exog parameters: Not given" if (exog_train is None) & (exog_test is None) else "Exog parameters: number of regressors="+str(exog_train.shape[1])
+    check_exog = (
+        "Exog parameters: Not given"
+        if (exog_train is None) & (exog_test is None)
+        else f"Exog parameters: number of regressors={str(exog_train.shape[1])}"
+    )
     print(check_exog)
-    
+
     ## train
     model = smt.SARIMAX(ts_train, order=order, seasonal_order=seasonal_order+(s,), exog=exog_train, enforce_stationarity=False, enforce_invertibility=False).fit()
     dtf_train = ts_train.to_frame(name="ts")
     dtf_train["model"] = model.fittedvalues
-    
+
     ## test
     dtf_test = ts_test.to_frame(name="ts")
     dtf_test["forecast"] = model.predict(start=len(ts_train), end=len(ts_train)+len(ts_test)-1, exog=exog_test)
@@ -844,10 +867,10 @@ def fit_sarimax(ts_train, ts_test, order=(1,0,1), seasonal_order=(1,0,1), s=7, e
     ## add conf_int
     ci = model.get_forecast(len(ts_test)).conf_int(1-conf).values
     dtf_test["lower"], dtf_test["upper"] = ci[:,0], ci[:,1]
-    
+
     ## evaluate
     dtf = dtf_train.append(dtf_test)
-    title = "ARIMA "+str(order) if exog_train is None else "ARIMAX "+str(order)
+    title = f"ARIMA {str(order)}" if exog_train is None else f"ARIMAX {str(order)}"
     title = "S"+title+" x "+str(seasonal_order) if np.sum(seasonal_order) > 0 else title
     dtf = utils_evaluate_ts_model(dtf, conf=conf, figsize=figsize, title=title)
     return dtf, model
@@ -870,14 +893,18 @@ def fit_garch(ts_train, ts_test, order=(1,0,1), seasonal_order=(0,0,0,0), exog_t
     model = garch.fit(update_freq=seasonal_order[3])
     dtf_train = ts_train.to_frame(name="ts")
     dtf_train["model"] = model.conditional_volatility
-    
+
     ## test
     dtf_test = ts_test.to_frame(name="ts")
     dtf_test["forecast"] = model.forecast(horizon=len(ts_test))
 
     ## evaluate
     dtf = dtf_train.append(dtf_test)
-    title = "GARCH ("+str(order[0])+","+str(order[2])+")" if order[0] != 0 else "ARCH ("+str(order[2])+")"
+    title = (
+        f"GARCH ({str(order[0])},{str(order[2])})"
+        if order[0] != 0
+        else f"ARCH ({str(order[2])})"
+    )
     dtf = utils_evaluate_ts_model(dtf, conf=conf, figsize=figsize, title=title)
     return dtf, model
 
@@ -1020,10 +1047,10 @@ def utils_predict_lstm(last_s_obs, model, scaler, pred_ahead, exog=None):
     ## scale
     s = model.input_shape[1]
     ts_preprocessed = list(scaler.transform(last_s_obs.values.reshape(-1,1))) 
-    
+
     ## predict, append, re-predict
     lst_preds = []
-    for i in range(pred_ahead):
+    for _ in range(pred_ahead):
         X = np.array(ts_preprocessed[len(ts_preprocessed)-s:])
         X = np.reshape(X, (1,s,1))
         pred = model.predict(X)
@@ -1046,11 +1073,11 @@ Fit Long Short-Term Memory neural network.
 def fit_lstm(ts_train, ts_test, model, exog=None, s=20, batch_size=1, epochs=100, verbose=0, conf=0.95, figsize=(15,5)):
     ## check
     print("Seasonality: using the last", s, "observations to predict the next 1")
-    
+
     ## preprocess train
     X_train, y_train, scaler = utils_preprocess_lstm(ts_train, scaler=None, exog=exog, s=s)
     print("--- X:", X_train.shape, "| y:", y_train.shape, "---")
-    
+
     ## lstm
     if model is None:
         model = models.Sequential()
@@ -1058,22 +1085,24 @@ def fit_lstm(ts_train, ts_test, model, exog=None, s=20, batch_size=1, epochs=100
         model.add( layers.Dense(1) )
         model.compile(optimizer='adam', loss='mean_absolute_error')
         print(model.summary())
-        
+
     ## train
     training = model.fit(x=X_train, y=y_train, batch_size=batch_size, epochs=epochs, shuffle=True, verbose=verbose, validation_split=0.3)
     dtf_train = ts_train.to_frame(name="ts")
     dtf_train["model"] = utils_fitted_lstm(ts_train, training.model, scaler, exog)
     dtf_train["model"] = dtf_train["model"].fillna(method='bfill')
-    
+
     ## test
     last_s_obs = ts_train[-s:]
     preds = utils_predict_lstm(last_s_obs, training.model, scaler, pred_ahead=len(ts_test), exog=None)
     dtf_test = ts_test.to_frame(name="ts").merge(pd.DataFrame(data=preds, index=ts_test.index, columns=["forecast"]),
                                                  how='left', left_index=True, right_index=True)
-    
+
     ## evaluate
     dtf = dtf_train.append(dtf_test)
-    dtf = utils_evaluate_ts_model(dtf, conf=conf, figsize=figsize, title="LSTM (memory:"+str(s)+")")
+    dtf = utils_evaluate_ts_model(
+        dtf, conf=conf, figsize=figsize, title=f"LSTM (memory:{str(s)})"
+    )
     return dtf, training.model
 
 
@@ -1236,8 +1265,7 @@ def fit_curve(X, y, f=None, kind=None, p0=None):
 Predict with optimal parameters.
 '''
 def utils_predict_curve(model, f, X):
-    fitted = f(X, model[0], model[1], model[2])
-    return fitted
+    return f(X, model[0], model[1], model[2])
 
 
 
@@ -1250,19 +1278,24 @@ def utils_plot_parametric(dtf, zoom=30, figsize=(15,5)):
     dtf["conf_int_low"] = dtf["forecast"] - 1.96*dtf["residuals"].std()
     dtf["conf_int_up"] = dtf["forecast"] + 1.96*dtf["residuals"].std()
     fig, ax = plt.subplots(nrows=1, ncols=2, figsize=figsize)
-    
+
     ## entire series
     dtf["ts"].plot(marker=".", linestyle='None', ax=ax[0], title="Parametric Fitting", color="black")
     dtf["model"].plot(ax=ax[0], color="green", label="model", legend=True)
     dtf["forecast"].plot(ax=ax[0], grid=True, color="red", label="forecast", legend=True)
     ax[0].fill_between(x=dtf.index, y1=dtf['conf_int_low'], y2=dtf['conf_int_up'], color='b', alpha=0.3)
-   
+
     ## focus on last
     first_idx = dtf[pd.notnull(dtf["forecast"])].index[0]
     first_loc = dtf.index.tolist().index(first_idx)
     zoom_idx = dtf.index[first_loc-zoom]
-    dtf.loc[zoom_idx:]["ts"].plot(marker=".", linestyle='None', ax=ax[1], color="black", 
-                                  title="Zoom on the last "+str(zoom)+" observations")
+    dtf.loc[zoom_idx:]["ts"].plot(
+        marker=".",
+        linestyle='None',
+        ax=ax[1],
+        color="black",
+        title=f"Zoom on the last {str(zoom)} observations",
+    )
     dtf.loc[zoom_idx:]["model"].plot(ax=ax[1], color="green")
     dtf.loc[zoom_idx:]["forecast"].plot(ax=ax[1], grid=True, color="red")
     ax[1].fill_between(x=dtf.loc[zoom_idx:].index, y1=dtf.loc[zoom_idx:]['conf_int_low'], 
