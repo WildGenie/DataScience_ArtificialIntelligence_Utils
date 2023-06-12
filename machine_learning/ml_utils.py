@@ -157,21 +157,22 @@ def freqdist_plot(dtf, x, max_cat=20, top=None, show_perc=True, bins=100, quanti
         ## cat --> freq
         if utils_recognize_type(dtf, x, max_cat) == "cat":   
             ax = dtf[x].value_counts().head(top).sort_values().plot(kind="barh", figsize=figsize)
-            totals = []
-            for i in ax.patches:
-                totals.append(i.get_width())
+            totals = [i.get_width() for i in ax.patches]
             if show_perc == False:
                 for i in ax.patches:
                     ax.text(i.get_width()+.3, i.get_y()+.20, str(i.get_width()), fontsize=10, color='black')
             else:
                 total = sum(totals)
                 for i in ax.patches:
-                    ax.text(i.get_width()+.3, i.get_y()+.20, str(round((i.get_width()/total)*100, 2))+'%', fontsize=10, color='black')
+                    ax.text(
+                        i.get_width() + 0.3,
+                        i.get_y() + 0.20,
+                        f'{str(round(i.get_width() / total * 100, 2))}%',
+                        fontsize=10,
+                        color='black',
+                    )
             ax.grid(axis="x")
             plt.suptitle(x, fontsize=20)
-            plt.show()
-            
-        ## num --> density
         else:
             fig, ax = plt.subplots(nrows=1, ncols=2, sharex=False, sharey=False, figsize=figsize)
             fig.suptitle(x, fontsize=20)
@@ -199,8 +200,8 @@ def freqdist_plot(dtf, x, max_cat=20, top=None, show_perc=True, bins=100, quanti
             else:
                 ax[1].title.set_text('outliers')
                 dtf.boxplot(column=x, ax=ax[1])
-            plt.show()   
-        
+        plt.show()
+
     except Exception as e:
         print("--- got error ---")
         print(e)
@@ -232,9 +233,6 @@ def bivariate_plot(dtf, x, y, max_cat=20, figsize=(10,5)):
             plt.show()
             ### joint plot
             sns.jointplot(x=x, y=y, data=dtf, dropna=True, kind='reg', height=int((figsize[0]+figsize[1])/2) )
-            plt.show()
-
-        ## cat vs cat --> hist count + hist %
         elif (utils_recognize_type(dtf, x, max_cat) == "cat") & (utils_recognize_type(dtf, y, max_cat) == "cat"):  
             fig, ax = plt.subplots(nrows=1, ncols=2,  sharex=False, sharey=False, figsize=figsize)
             fig.suptitle(x+"   vs   "+y, fontsize=20)
@@ -256,14 +254,12 @@ def bivariate_plot(dtf, x, y, max_cat=20, figsize=(10,5)):
             ### fix figure
             plt.close(2)
             plt.close(3)
-            plt.show()
-    
-        ## num vs cat --> density + stacked + boxplot 
         else:
-            if (utils_recognize_type(dtf, x, max_cat) == "cat"):
-                cat,num = x,y
-            else:
-                cat,num = y,x
+            cat, num = (
+                (x, y)
+                if (utils_recognize_type(dtf, x, max_cat) == "cat")
+                else (y, x)
+            )
             fig, ax = plt.subplots(nrows=1, ncols=3,  sharex=False, sharey=False, figsize=figsize)
             fig.suptitle(x+"   vs   "+y, fontsize=20)
             ### distribution
@@ -288,8 +284,8 @@ def bivariate_plot(dtf, x, y, max_cat=20, figsize=(10,5)):
             ### fix figure
             plt.close(2)
             plt.close(3)
-            plt.show()
-        
+        plt.show()
+
     except Exception as e:
         print("--- got error ---")
         print(e)
@@ -409,9 +405,8 @@ def test_corr(dtf, x, y, max_cat=20):
         coeff, p = scipy.stats.pearsonr(dtf_noNan[x], dtf_noNan[y])
         coeff, p = round(coeff, 3), round(p, 3)
         conclusion = "Significant" if p < 0.05 else "Non-Significant"
-        print("Pearson Correlation:", coeff, conclusion, "(p-value: "+str(p)+")")
-    
-    ## cat vs cat --> cramer (chiquadro)
+        print("Pearson Correlation:", coeff, conclusion, f"(p-value: {str(p)})")
+
     elif (utils_recognize_type(dtf, x, max_cat) == "cat") & (utils_recognize_type(dtf, y, max_cat) == "cat"):
         cont_table = pd.crosstab(index=dtf[x], columns=dtf[y])
         chi2_test = scipy.stats.chi2_contingency(cont_table)
@@ -425,21 +420,21 @@ def test_corr(dtf, x, y, max_cat=20):
         coeff = np.sqrt(phi2corr/min((kcorr-1), (rcorr-1)))
         coeff, p = round(coeff, 3), round(p, 3)
         conclusion = "Significant" if p < 0.05 else "Non-Significant"
-        print("Cramer Correlation:", coeff, conclusion, "(p-value: "+str(p)+")")
-    
-    ## num vs cat --> 1way anova (f: the means of the groups are different)
+        print("Cramer Correlation:", coeff, conclusion, f"(p-value: {str(p)})")
+
     else:
-        if (utils_recognize_type(dtf, x, max_cat) == "cat"):
-            cat,num = x,y
-        else:
-            cat,num = y,x
+        cat, num = (
+            (x, y)
+            if (utils_recognize_type(dtf, x, max_cat) == "cat")
+            else (y, x)
+        )
         model = smf.ols(num+' ~ '+cat, data=dtf).fit()
         table = sm.stats.anova_lm(model)
         p = table["PR(>F)"][0]
         coeff, p = None, round(p, 3)
         conclusion = "Correlated" if p < 0.05 else "Non-Correlated"
-        print("Anova F: the variables are", conclusion, "(p-value: "+str(p)+")")
-        
+        print("Anova F: the variables are", conclusion, f"(p-value: {str(p)})")
+
     return coeff, p
 
 
@@ -576,8 +571,10 @@ def add_feature_clusters(dtf, x, dic_clusters_mapping, dropx=False):
     dic_flat = {v:k for k,lst in dic_clusters_mapping.items() for v in lst}
     for k,v in dic_clusters_mapping.items():
         if len(v)==0:
-            residual_class = k 
-    dtf[x+"_cluster"] = dtf[x].apply(lambda x: dic_flat[x] if x in dic_flat.keys() else residual_class)
+            residual_class = k
+    dtf[x + "_cluster"] = dtf[x].apply(
+        lambda x: dic_flat[x] if x in dic_flat else residual_class
+    )
     if dropx == True:
         dtf = dtf.drop(x, axis=1)
     return dtf
@@ -619,7 +616,7 @@ Computes all the required data preprocessing.
 def data_preprocessing(dtf, y, processNas=None, processCategorical=None, split=None, scale=None, task="classification"):
     try:
         dtf = pop_columns(dtf, [y], "front")
-        
+
         ## missing
         ### check
         print("--- check missing ---")
@@ -639,14 +636,14 @@ def data_preprocessing(dtf, y, processNas=None, processCategorical=None, split=N
                         dtf[col] = dtf[col].fillna('missing')
                     else:
                         cols_with_missings_numeric.append(col)
-                if len(cols_with_missings_numeric) != 0:
+                if cols_with_missings_numeric:
                     print("replacing Nas in the numerical variables:", cols_with_missings_numeric)
                 imputer = impute.SimpleImputer(strategy=processNas)
                 imputer = imputer.fit(dtf[cols_with_missings_numeric])
                 dtf[cols_with_missings_numeric] = imputer.transform(dtf[cols_with_missings_numeric])
         else:
             print("   OK: No missing")
-                
+
         ## categorical data
         ### check
         print("--- check categorical data ---")
@@ -656,7 +653,7 @@ def data_preprocessing(dtf, y, processNas=None, processCategorical=None, split=N
                 print("WARNING:", col, "-->", dtf[col].nunique(), "categories")
                 cols_with_categorical.append(col)
         ### treat
-        if len(cols_with_categorical) != 0:
+        if cols_with_categorical:
             if processCategorical is not None:
                 print("...trating categorical...")
                 for col in cols_with_categorical:
@@ -664,7 +661,7 @@ def data_preprocessing(dtf, y, processNas=None, processCategorical=None, split=N
                     dtf = pd.concat([dtf, pd.get_dummies(dtf[col], prefix=col)], axis=1).drop([col], axis=1)
         else:
             print("   OK: No categorical")
-        
+
         ## 3.split train/test
         print("--- split train/test ---")
         X = dtf.drop(y, axis=1).values
@@ -677,7 +674,7 @@ def data_preprocessing(dtf, y, processNas=None, processCategorical=None, split=N
         else:
             print("   OK: step skipped")
             X_train, y_train, X_test, y_test = X, Y, None, None
-        
+
         ## 4.scaling
         print("--- scaling ---")
         if scale is not None:
@@ -693,10 +690,10 @@ def data_preprocessing(dtf, y, processNas=None, processCategorical=None, split=N
         else:
             print("   OK: step skipped")
             scalerX, scalerY = 0, 0
-        
+
         return {"dtf":dtf, "X_names":dtf.drop(y, axis=1).columns.to_list(), 
                 "X":(X_train, X_test), "y":(y_train, y_test), "scaler":(scalerX, scalerY)}
-    
+
     except Exception as e:
         print("--- got error ---")
         print(e)
@@ -868,12 +865,12 @@ def utils_threshold_selection(model, X, y, figsize=(10,5)):
         dic_scores["precision"].append(metrics.precision_score(yy_test, predicted))
         dic_scores["recall"].append(metrics.recall_score(yy_test, predicted))
         dic_scores["f1"].append(metrics.f1_score(yy_test, predicted))
-    
+
     ## find best
     dtf_scores = pd.DataFrame(dic_scores).set_index(pd.Index(thresholds))
-    for k in dic_scores.keys():
+    for k in dic_scores:
         print(k, "--> best threshold:", round(dtf_scores[dtf_scores[k]==dtf_scores[k].max()][k].index[0], 1))
-        
+
     ## plot
     fig, ax = plt.subplots(figsize=figsize)
     ax.set(title="Threshold Selection", xlabel="Threshold", ylabel="Scores")
@@ -897,10 +894,10 @@ Tunes the hyperparameters of a sklearn classification model.
 def tune_classif_model(X_train, y_train, model_base=None, param_dic=None, scoring="f1", searchtype="RandomSearch", n_iter=1000, cv=10, figsize=(10,5)):
     ## params
     model_base = ensemble.GradientBoostingClassifier() if model_base is None else model_base
-    param_dic = {'learning_rate':[0.15,0.1,0.05,0.01,0.005,0.001], 'n_estimators':[100,250,500,750,1000,1250,1500,1750], 'max_depth':[2,3,4,5,6,7]} if param_dic is None else param_dic                        
+    param_dic = {'learning_rate':[0.15,0.1,0.05,0.01,0.005,0.001], 'n_estimators':[100,250,500,750,1000,1250,1500,1750], 'max_depth':[2,3,4,5,6,7]} if param_dic is None else param_dic
     dic_scores = {'accuracy':metrics.make_scorer(metrics.accuracy_score), 'precision':metrics.make_scorer(metrics.precision_score), 
                   'recall':metrics.make_scorer(metrics.recall_score), 'f1':metrics.make_scorer(metrics.f1_score)}
-    
+
     ## Search
     print("---", searchtype, "---")
     if searchtype == "RandomSearch":
@@ -908,27 +905,27 @@ def tune_classif_model(X_train, y_train, model_base=None, param_dic=None, scorin
         print("Best Model parameters:", random_search.best_params_)
         print("Best Model "+scoring+":", round(random_search.best_score_, 2))
         model = random_search.best_estimator_
-        
+
     elif searchtype == "GridSearch":
         grid_search = model_selection.GridSearchCV(model_base, param_dic, scoring=dic_scores, refit=scoring).fit(X_train, y_train)
         print("Best Model parameters:", grid_search.best_params_)
         print("Best Model mean "+scoring+":", round(grid_search.best_score_, 2))
         model = grid_search.best_estimator_
-    
+
     ## K fold validation
     print("")
     print("--- Kfold Validation ---")
     Kfold_base = model_selection.cross_validate(estimator=model_base, X=X_train, y=y_train, cv=cv, scoring=dic_scores)
     Kfold_model = model_selection.cross_validate(estimator=model, X=X_train, y=y_train, cv=cv, scoring=dic_scores)
-    for score in dic_scores.keys():
+    for score in dic_scores:
         print(score, "mean - base model:", round(Kfold_base["test_"+score].mean(),2), " --> best model:", round(Kfold_model["test_"+score].mean()))
     utils_kfold_roc(model, X_train, y_train, cv=cv, figsize=figsize)
-    
+
     ## Threshold analysis
     print("")
     print("--- Threshold Selection ---")
     utils_threshold_selection(model, X_train, y_train, figsize=figsize)
-    
+
     return model
 
 
@@ -1372,12 +1369,12 @@ def plot2d_classif_model(X_train, y_train, X_test, y_test, model=None, annotate=
     if X_train.shape[1] > 2:
         print("--- reducing dimensions to 2 ---")
         X_train, X_test, pca = utils_dimensionality_reduction(X_train, X_test, n_features=2)
-     
+
     ## fit 2d model
     print("--- fitting 2d model ---")
     model_2d = ensemble.GradientBoostingClassifier() if model is None else model
     model_2d.fit(X_train, y_train)
-    
+
     ## plot predictions
     print("--- plotting test set ---")
     from matplotlib.colors import ListedColormap
@@ -1389,7 +1386,12 @@ def plot2d_classif_model(X_train, y_train, X_test, y_test, model=None, annotate=
     ax.contourf(X1, X2, Y, alpha=0.5, cmap=ListedColormap(list(colors.values())))
     ax.set(xlim=[X1.min(),X1.max()], ylim=[X2.min(),X2.max()], title="Classification regions")
     for i in np.unique(y_test):
-        ax.scatter(X_test[y_test==i, 0], X_test[y_test==i, 1], c=colors[i], label="true "+str(i))  
+        ax.scatter(
+            X_test[y_test == i, 0],
+            X_test[y_test == i, 1],
+            c=colors[i],
+            label=f"true {str(i)}",
+        )
     if annotate is True:
         for n,i in enumerate(y_test):
             ax.annotate(n, xy=(X_test[n,0], X_test[n,1]), textcoords='offset points', ha='left', va='bottom')
@@ -1459,7 +1461,7 @@ def visualize_nn(model, description=False, figsize=(10,8)):
     ## get layers info
     lst_layers = utils_nn_config(model)
     layer_sizes = [layer["out"] for layer in lst_layers]
-    
+
     ## fig setup
     fig = plt.figure(figsize=figsize)
     ax = fig.gca()
@@ -1469,14 +1471,14 @@ def visualize_nn(model, description=False, figsize=(10,8)):
     x_space = (right-left) / float(len(layer_sizes)-1)
     y_space = (top-bottom) / float(max(layer_sizes))
     p = 0.025
-    
+
     ## nodes
     for i,n in enumerate(layer_sizes):
         top_on_layer = y_space*(n-1)/2.0 + (top+bottom)/2.0
         layer = lst_layers[i]
         color = "green" if i in [0, len(layer_sizes)-1] else "blue"
         color = "red" if (layer['neurons'] == 0) and (i > 0) else color
-        
+
         ### add description
         if (description is True):
             d = i if i == 0 else i-0.5
@@ -1488,13 +1490,13 @@ def visualize_nn(model, description=False, figsize=(10,8)):
                 plt.text(x=left+d*x_space, y=top-2*p, fontsize=10, color=color, s="Σ"+str(layer['in'])+"[X*w]+b")
                 out = " Y"  if i == len(layer_sizes)-1 else " out"
                 plt.text(x=left+d*x_space, y=top-3*p, fontsize=10, color=color, s=") = "+str(layer['neurons'])+out)
-        
+
         ### circles
         for m in range(n):
             color = "limegreen" if color == "green" else color
             circle = plt.Circle(xy=(left+i*x_space, top_on_layer-m*y_space-4*p), radius=y_space/4.0, color=color, ec='k', zorder=4)
             ax.add_artist(circle)
-            
+
             ### add text
             if i == 0:
                 plt.text(x=left-4*p, y=top_on_layer-m*y_space-4*p, fontsize=10, s=r'$X_{'+str(m+1)+'}$')
@@ -1502,7 +1504,7 @@ def visualize_nn(model, description=False, figsize=(10,8)):
                 plt.text(x=right+4*p, y=top_on_layer-m*y_space-4*p, fontsize=10, s=r'$y_{'+str(m+1)+'}$')
             else:
                 plt.text(x=left+i*x_space+p, y=top_on_layer-m*y_space+(y_space/8.+0.01*y_space)-4*p, fontsize=10, s=r'$H_{'+str(m+1)+'}$')
-    
+
     ## links
     for i, (n_a, n_b) in enumerate(zip(layer_sizes[:-1], layer_sizes[1:])):
         layer = lst_layers[i+1]
@@ -1515,10 +1517,11 @@ def visualize_nn(model, description=False, figsize=(10,8)):
                 line = plt.Line2D([i*x_space+left, (i+1)*x_space+left], 
                                   [layer_top_a-m*y_space, layer_top_b-o*y_space], 
                                   c=color, alpha=0.5)
-                if layer['activation'] is None:
-                    if o == m:
-                        ax.add_artist(line)
-                else:
+                if (
+                    layer['activation'] is None
+                    and o == m
+                    or layer['activation'] is not None
+                ):
                     ax.add_artist(line)
     plt.show()
 
@@ -1538,7 +1541,7 @@ Find the best K-Means with the within-cluster sum of squares (Elbow method).
 '''
 def find_best_k(X, max_k=10, plot=True):
     ## iterations
-    distortions = [] 
+    distortions = []
     for i in range(1, max_k+1):
         if len(X) >= i:
             model = cluster.KMeans(n_clusters=i, init='k-means++', max_iter=300, n_init=10, random_state=0)
@@ -1546,13 +1549,15 @@ def find_best_k(X, max_k=10, plot=True):
             distortions.append(model.inertia_)
 
     ## best k: the lowest second derivative
-    k = [i*100 for i in np.diff(distortions,2)].index(min([i*100 for i in np.diff(distortions,2)]))
+    k = [i * 100 for i in np.diff(distortions, 2)].index(
+        min(i * 100 for i in np.diff(distortions, 2))
+    )
 
     ## plot
     if plot is True:
         fig, ax = plt.subplots()
         ax.plot(range(1, len(distortions)+1), distortions)
-        ax.axvline(k, ls='--', color="red", label="k = "+str(k))
+        ax.axvline(k, ls='--', color="red", label=f"k = {k}")
         ax.set(title='The Elbow Method', xlabel='Number of clusters', ylabel="Distortion")
         ax.legend()
         ax.grid(True)
@@ -1573,9 +1578,17 @@ def utils_plot_cluster(dtf, x1, x2, th_centroids=None, figsize=(10,5)):
     ## plot points and real centroids
     fig, ax = plt.subplots(figsize=figsize)
     k = dtf["cluster"].nunique()
-    sns.scatterplot(x=x1, y=x2, data=dtf, palette=sns.color_palette("bright",k),
-                        hue='cluster', size="centroids", size_order=[1,0],
-                        legend="brief", ax=ax).set_title('Clustering (k='+str(k)+')')
+    sns.scatterplot(
+        x=x1,
+        y=x2,
+        data=dtf,
+        palette=sns.color_palette("bright", k),
+        hue='cluster',
+        size="centroids",
+        size_order=[1, 0],
+        legend="brief",
+        ax=ax,
+    ).set_title(f'Clustering (k={str(k)})')
 
     ## plot theoretical centroids
     if th_centroids is not None:
@@ -1617,9 +1630,9 @@ def fit_ml_cluster(X, model=None, k=None, lst_2Dplot=None, figsize=(10,5)):
     if (model is None) and (k is None):
         model = cluster.AffinityPropagation()
         print("--- k not defined: using Affinity Propagation ---")
-    elif (model is None) and (k is not None):
+    elif model is None:
         model = cluster.KMeans(n_clusters=k, init='k-means++')
-        print("---", "k="+str(k)+": using k-means ---")
+        print("---", f"k={str(k)}: using k-means ---")
 
     ## clustering
     dtf_X = X.copy()
@@ -1633,7 +1646,7 @@ def fit_ml_cluster(X, model=None, k=None, lst_2Dplot=None, figsize=(10,5)):
     dtf_X["centroids"] = 0
     for i in closest:
         dtf_X["centroids"].iloc[i] = 1
-    
+
     ## plot
     if (lst_2Dplot is not None) or (X.shape[1] == 2):
         lst_2Dplot = X.columns.tolist() if lst_2Dplot is None else lst_2Dplot
@@ -1721,7 +1734,14 @@ def plot_map(dtf, x, y, start, zoom=12, tiles="cartodbpositron", popup=None, siz
     ## create columns for plotting
     if color is not None:
         lst_elements = sorted(list(dtf[color].unique()))
-        lst_colors = ['#%06X' % np.random.randint(0, 0xFFFFFF) for i in range(len(lst_elements))] if lst_colors is None else lst_colors
+        lst_colors = (
+            [
+                '#%06X' % np.random.randint(0, 0xFFFFFF)
+                for _ in range(len(lst_elements))
+            ]
+            if lst_colors is None
+            else lst_colors
+        )
         data["color"] = data[color].apply(lambda x: lst_colors[lst_elements.index(x)])
 
     if size is not None:
@@ -1737,13 +1757,13 @@ def plot_map(dtf, x, y, start, zoom=12, tiles="cartodbpositron", popup=None, siz
     elif (size is None) and (color is not None):
         data.apply(lambda row: folium.CircleMarker(location=[row[x],row[y]], popup=row[popup],
                                                    color=row["color"], fill=True, radius=5).add_to(map_), axis=1)
-    elif (size is not None) and (color is not None):
+    elif size is not None:
         data.apply(lambda row: folium.CircleMarker(location=[row[x],row[y]], popup=row[popup],
                                                    color=row["color"], fill=True, radius=row["size"]).add_to(map_), axis=1)
     else:
         data.apply(lambda row: folium.CircleMarker(location=[row[x],row[y]], popup=row[popup],
                                                    color='#3186cc', fill=True, radius=5).add_to(map_), axis=1)
-    
+
     ## legend
     if (color is not None) and (legend is True):
         legend_html = """<div style="position:fixed; bottom:10px; left:10px; border:2px solid black; z-index:9999; font-size:14px;">&nbsp;<b>"""+color+""":</b><br>"""
@@ -1751,19 +1771,17 @@ def plot_map(dtf, x, y, start, zoom=12, tiles="cartodbpositron", popup=None, siz
             legend_html = legend_html+"""&nbsp;<i class="fa fa-circle fa-1x" style="color:"""+lst_colors[lst_elements.index(i)]+""""></i>&nbsp;"""+str(i)+"""<br>"""
         legend_html = legend_html+"""</div>"""
         map_.get_root().html.add_child(folium.Element(legend_html))
-    
+
     ## add marker
     if marker is not None:
         lst_elements = sorted(list(dtf[marker].unique()))
         lst_colors = ["black","red","blue","green","pink","orange","gray"]  #7
         ### too many values, can't mark
         if len(lst_elements) > len(lst_colors):
-            raise Exception("marker has uniques > "+str(len(lst_colors)))
-        ### binary case (1/0): mark only 1s
+            raise Exception(f"marker has uniques > {len(lst_colors)}")
         elif len(lst_elements) == 2:
             data[data[marker]==lst_elements[1]].apply(lambda row: folium.Marker(location=[row[x],row[y]], popup=row[marker], draggable=False, 
-                                                                                icon=folium.Icon(color=lst_colors[0])).add_to(map_), axis=1) 
-        ### normal case: mark all values
+                                                                                icon=folium.Icon(color=lst_colors[0])).add_to(map_), axis=1)
         else:
             for i in lst_elements:
                 data[data[marker]==i].apply(lambda row: folium.Marker(location=[row[x],row[y]], popup=row[marker], draggable=False, 

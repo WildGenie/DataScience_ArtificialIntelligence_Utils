@@ -255,7 +255,7 @@ Compute n-grams frequency with nltk tokenizer.
 def word_freq(corpus, ngrams=[1,2,3], top=10, figsize=(10,7)):
     lst_tokens = nltk.tokenize.word_tokenize(corpus.str.cat(sep=" "))
     ngrams = [ngrams] if type(ngrams) is int else ngrams
-    
+
     ## calculate
     dtf_freq = pd.DataFrame()
     for n in ngrams:
@@ -263,9 +263,9 @@ def word_freq(corpus, ngrams=[1,2,3], top=10, figsize=(10,7)):
         dtf_n = pd.DataFrame(dic_words_freq.most_common(), columns=["word","freq"])
         dtf_n["ngrams"] = n
         dtf_freq = dtf_freq.append(dtf_n)
-    dtf_freq["word"] = dtf_freq["word"].apply(lambda x: " ".join(string for string in x) )
+    dtf_freq["word"] = dtf_freq["word"].apply(lambda x: " ".join(x))
     dtf_freq = dtf_freq.sort_values(["ngrams","freq"], ascending=[True,False])
-    
+
     ## plot
     fig, ax = plt.subplots(figsize=figsize)
     sns.barplot(x="freq", y="word", hue="ngrams", dodge=False, ax=ax,
@@ -403,18 +403,17 @@ Creates columns
     int
 '''
 def utils_ner_features(lst_dics_tuples, tag):
-    if len(lst_dics_tuples) > 0:
-        tag_type = []
-        for dic_tuples in lst_dics_tuples:
-            for tuple in dic_tuples:
-                type, n = tuple[1], dic_tuples[tuple]
-                tag_type = tag_type + [type]*n
-                dic_counter = collections.Counter()
-                for x in tag_type:
-                    dic_counter[x] += 1
-        return dic_counter[tag]   #pd.DataFrame([dic_counter])
-    else:
+    if len(lst_dics_tuples) <= 0:
         return 0
+    tag_type = []
+    for dic_tuples in lst_dics_tuples:
+        for tuple in dic_tuples:
+            type, n = tuple[1], dic_tuples[tuple]
+            tag_type = tag_type + [type]*n
+            dic_counter = collections.Counter()
+            for x in tag_type:
+                dic_counter[x] += 1
+    return dic_counter[tag]   #pd.DataFrame([dic_counter])
 
 
 
@@ -442,7 +441,7 @@ def add_ner_spacy(data, column, ner=None, lst_tag_filter=None, grams_join="_", c
     ## put all tags in a column
     print("--- counting tags ---")
     dtf["tags"] = dtf["tags"].apply(lambda x: utils_lst_count(x, top=None))
-    
+
     ## extract features
     if create_features == True:
         print("--- creating features ---")
@@ -450,8 +449,7 @@ def add_ner_spacy(data, column, ner=None, lst_tag_filter=None, grams_join="_", c
         tags_set = []
         for lst in dtf["tags"].tolist():
             for dic in lst:
-                for k in dic.keys():
-                    tags_set.append(k[1])
+                tags_set.extend(k[1] for k in dic.keys())
         tags_set = list(set(tags_set))
         ### create columns
         for feature in tags_set:
@@ -498,39 +496,35 @@ def retrain_ner_spacy(train_data, output_dir, model="blank", n_iter=100):
 #            frase = "ciao la mia azienda si chiama "+name+" e fa business"
 #            tupla = (frase, {"entities":[(30, 30+len(name), tag_type)]})
 #            train_data.append(tupla)
-        
+
         ## load model
-        if model == "blank":
-            ner_model = spacy.blank("en")
-        else:
-            ner_model = spacy.load(model)
-        
+        ner_model = spacy.blank("en") if model == "blank" else spacy.load(model)
         ## create a new pipe
         if "ner" not in ner_model.pipe_names:
             new_pipe = ner_model.create_pipe("ner")
             ner_model.add_pipe(new_pipe, last=True)
         else:
             new_pipe = ner_model.get_pipe("ner")
-        
+
         ## add label
         for _, annotations in train_data:
             for ent in annotations.get("entities"):
                 new_pipe.add_label(ent[2])
-            
+
         ## train
         other_pipes = [pipe for pipe in ner_model.pipe_names if pipe != "ner"] ###ignora altre pipe
         with ner_model.disable_pipes(*other_pipes):
             print("--- Training spacy ---")
             if model == "blank":
                 ner_model.begin_training()
-            for n in range(n_iter):
+            for _ in range(n_iter):
                 random.shuffle(train_data)
                 losses = {}
                 batches = spacy.util.minibatch(train_data, size=spacy.util.compounding(4., 32., 1.001)) ###batch up data using spaCy's minibatch
                 for batch in batches:
                     texts, annotations = zip(*batch)
                     ner_model.update(docs=texts, golds=annotations, drop=0.5, losses=losses)  ###update
-        
+
         ## test the trained model
         print("--- Test new model ---")
         for text, _ in train_data:
@@ -690,13 +684,13 @@ def features_selection(X, y, X_names, top=None, print_top=10):
     dtf_features = dtf_features[dtf_features["score"]>0.95] #p-value filter
     if top is not None:
         dtf_features = dtf_features.groupby('y')["y","feature","score"].head(top)
-    
+
     ## print
     print("features selection: from", "{:,.0f}".format(len(X_names)), 
           "to", "{:,.0f}".format(len(dtf_features["feature"].unique())))
     print(" ")
     for cat in np.unique(y):
-        print("# {}:".format(cat))
+        print(f"# {cat}:")
         print("  . selected features:", len(dtf_features[dtf_features["y"]==cat]))
         print("  . top features:", ", ".join(dtf_features[dtf_features["y"]==cat]["feature"].values[:print_top]))
         print(" ")
@@ -763,10 +757,9 @@ Use lime to build an a explainer.
 '''
 def explainer_lime(model, y_train, txt_instance, top=10):
     explainer = lime_text.LimeTextExplainer(class_names=np.unique(y_train))
-    explained = explainer.explain_instance(txt_instance, model.predict_proba, num_features=top) 
+    explained = explainer.explain_instance(txt_instance, model.predict_proba, num_features=top)
     explained.show_in_notebook(text=txt_instance, predict_proba=False)
-    dtf_explainer = pd.DataFrame(explained.as_list(), columns=['feature','effect'])
-    return dtf_explainer
+    return pd.DataFrame(explained.as_list(), columns=['feature','effect'])
 
 
 
@@ -870,36 +863,47 @@ Creates a feature matrix (num_docs x vector_size)
 def embedding_w2v(x, nlp=None, value_na=0):
     nlp = gensim_api.load("glove-wiki-gigaword-300") if nlp is None else nlp
     null_vec = [value_na]*nlp.vector_size
-    
+
     ## single word --> vec (size,)
     if (type(x) is str) and (len(x.split()) == 1):
-        X = nlp[x] if x in nlp.vocab.keys() else null_vec
-    
-    ## list of words --> matrix (n, size)
-    elif (type(x) is list) and (type(x[0]) is str) and (len(x[0].split()) == 1):
-        X = np.array([nlp[word] if word in nlp.vocab.keys() else null_vec for word in x])
-    
-    ## list of lists of words --> matrix (n mean vectors, size)
-    elif (type(x) is list) and (type(x[0]) is list):
-        lst_mean_vecs = []
-        for lst in x:
-            lst_mean_vecs.append(np.array([nlp[word] if word in nlp.vocab.keys() else null_vec for word in lst]
-                                          ).mean(0))
-        X = np.array(lst_mean_vecs)
-    
-    ## single text --> matrix (n words, size)
-    elif (type(x) is str) and (len(x.split()) > 1):
-        X = np.array([nlp[word] if word in nlp.vocab.keys() else null_vec for word in x.split()])
-    
-    ## list of texts --> matrix (n mean vectors, size)
-    else:
-        lst_mean_vecs = []
-        for txt in x:
-            lst_mean_vecs.append(np.array([nlp[word] if word in nlp.vocab.keys() else null_vec for word in txt.split()]
-                                          ).mean(0))
-        X = np.array(lst_mean_vecs)
+        return nlp[x] if x in nlp.vocab.keys() else null_vec
 
-    return X
+    elif (type(x) is list) and (type(x[0]) is str) and (len(x[0].split()) == 1):
+        return np.array(
+            [nlp[word] if word in nlp.vocab.keys() else null_vec for word in x]
+        )
+
+    elif (type(x) is list) and (type(x[0]) is list):
+        lst_mean_vecs = [
+            np.array(
+                [
+                    nlp[word] if word in nlp.vocab.keys() else null_vec
+                    for word in lst
+                ]
+            ).mean(0)
+            for lst in x
+        ]
+        return np.array(lst_mean_vecs)
+
+    elif (type(x) is str) and (len(x.split()) > 1):
+        return np.array(
+            [
+                nlp[word] if word in nlp.vocab.keys() else null_vec
+                for word in x.split()
+            ]
+        )
+
+    else:
+        lst_mean_vecs = [
+            np.array(
+                [
+                    nlp[word] if word in nlp.vocab.keys() else null_vec
+                    for word in txt.split()
+                ]
+            ).mean(0)
+            for txt in x
+        ]
+        return np.array(lst_mean_vecs)
 
 
 
@@ -916,14 +920,16 @@ def plot_w2v(lst_words=None, nlp=None, plot_type="2d", top=20, annotate=True, fi
     nlp = gensim_api.load("glove-wiki-gigaword-300") if nlp is None else nlp
     fig = plt.figure(figsize=figsize)
     if lst_words is not None:
-        fig.suptitle("Word: "+lst_words[0], fontsize=12) if len(lst_words) == 1 else fig.suptitle("Words: "+str(lst_words[:5]), fontsize=12)
+        fig.suptitle("Word: " + lst_words[0], fontsize=12) if len(
+            lst_words
+        ) == 1 else fig.suptitle(f"Words: {str(lst_words[:5])}", fontsize=12)
     else:
         fig.suptitle("Vocabulary")
     try:
         ## word embedding
         tot_words = lst_words + [tupla[0] for tupla in nlp.most_similar(lst_words, topn=top)] if lst_words is not None else list(nlp.vocab.keys())
         X = nlp[tot_words]
-        
+
         ## pca
         pca = manifold.TSNE(perplexity=40, n_components=int(plot_type[0]), init='pca')
         X = pca.fit_transform(X)
@@ -933,8 +939,8 @@ def plot_w2v(lst_words=None, nlp=None, plot_type="2d", top=20, annotate=True, fi
         dtf = pd.DataFrame(X, index=tot_words, columns=columns)
         dtf["input"] = 0
         if lst_words is not None:
-            dtf["input"].iloc[0:len(lst_words)] = 1  #<--this makes the difference between vocabulary and input words
-        
+            dtf["input"].iloc[:len(lst_words)] = 1
+
         ## plot 2d
         if plot_type == "2d": 
             ax = fig.add_subplot()
@@ -944,7 +950,7 @@ def plot_w2v(lst_words=None, nlp=None, plot_type="2d", top=20, annotate=True, fi
                 for i in range(len(dtf)):
                     ax.annotate(dtf.index[i], xy=(dtf["x"].iloc[i],dtf["y"].iloc[i]), 
                                 xytext=(5,2), textcoords='offset points', ha='right', va='bottom')
-        
+
         ## plot 3d
         elif plot_type == "3d":
             from mpl_toolkits.mplot3d import Axes3D
@@ -956,15 +962,21 @@ def plot_w2v(lst_words=None, nlp=None, plot_type="2d", top=20, annotate=True, fi
                 for label, row in dtf[["x","y","z"]].iterrows():
                     x, y, z = row
                     ax.text(x, y, z, s=label)
-            
+
         plt.show()
-        
+
     except Exception as e:
         print("--- got error ---")
         print(e)
         word = str(e).split("'")[1]
         print("maybe you are looking for ... ")
-        print([k for k in list(nlp.vocab.keys()) if 1-nltk.jaccard_distance(set(word),set(k)) > 0.7])
+        print(
+            [
+                k
+                for k in list(nlp.vocab.keys())
+                if nltk.jaccard_distance(set(word), set(k)) < 1 - 0.7
+            ]
+        )
 
 
 
@@ -1008,7 +1020,7 @@ Transforms the corpus into an array of sequences of idx (tokenizer) with same le
 '''
 def text2seq(corpus, ngrams=1, grams_join=" ", lst_ngrams_detectors=[], fitted_tokenizer=None, top=None, oov=None, maxlen=None, padding="<PAD>"):    
     print("--- tokenization ---")
-    
+
     ## detect common n-grams in corpus
     lst_corpus = utils_preprocess_ngrams(corpus, ngrams=ngrams, grams_join=grams_join, lst_ngrams_detectors=lst_ngrams_detectors)
 
@@ -1019,8 +1031,12 @@ def text2seq(corpus, ngrams=1, grams_join=" ", lst_ngrams_detectors=[], fitted_t
                                                filters='!"#$%&()*+,-./:;<=>?@[\\]^_`{|}~\t\n')
         tokenizer.fit_on_texts(lst_corpus)
         dic_vocabulary = {padding:0}
-        words = tokenizer.word_index if top is None else dict(list(tokenizer.word_index.items())[0:top+1])
-        dic_vocabulary.update(words)
+        words = (
+            tokenizer.word_index
+            if top is None
+            else dict(list(tokenizer.word_index.items())[: top + 1])
+        )
+        dic_vocabulary |= words
         print(len(dic_vocabulary), "words")
     else:
         tokenizer = fitted_tokenizer
@@ -1086,11 +1102,11 @@ Fits a keras classification model.
 def fit_dl_classif(X_train, y_train, X_test, encode_y=False, dic_y_mapping=None, model=None, weights=None, epochs=100, batch_size=256, verbose=0):
     ## encode y
     if encode_y is True:
-        dic_y_mapping = {n:label for n,label in enumerate(np.unique(y_train))}
+        dic_y_mapping = dict(enumerate(np.unique(y_train)))
         inverse_dic = {v:k for k,v in dic_y_mapping.items()}
         y_train = np.array( [inverse_dic[y] for y in y_train] )
     print(dic_y_mapping)
-    
+
     ## model
     if model is None:
         ### params
@@ -1107,12 +1123,12 @@ def fit_dl_classif(X_train, y_train, X_test, encode_y=False, dic_y_mapping=None,
         model = models.Model(x_in, y_out)
         model.compile(loss='sparse_categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
         print(model.summary())
-        
+
     ## train
     training = model.fit(x=X_train, y=y_train, batch_size=batch_size, epochs=epochs, shuffle=True, verbose=verbose, validation_split=0.3)
     if epochs > 1:
         utils_plot_keras_training(training)
-    
+
     ## test
     predicted_prob = model.predict(X_test)
     predicted = [dic_y_mapping[np.argmax(pred)] for pred in predicted_prob] if encode_y is True else [np.argmax(pred)]
@@ -1136,20 +1152,20 @@ def explainer_attention(model, tokenizer, txt_instance, lst_ngrams_detectors=[],
     lst_corpus = utils_preprocess_ngrams([re.sub(r'[^\w\s]', '', txt_instance.lower().strip())], lst_ngrams_detectors=lst_ngrams_detectors)
     X_instance = kprocessing.sequence.pad_sequences(tokenizer.texts_to_sequences(lst_corpus), 
                                                     maxlen=int(model.input.shape[1]), padding="post", truncating="post")
-    
+
     ## get attention weights
     layer = [layer for layer in model.layers if "attention" in layer.name][0]
     func = K.function([model.input], [layer.output])
     weights = func(X_instance)[0]
     weights = np.mean(weights, axis=2).flatten()
-    
+
     ## rescale weights, remove null vector, map word-weight
     weights = preprocessing.MinMaxScaler(feature_range=(0,1)).fit_transform(np.array(weights).reshape(-1,1)).reshape(-1)
     weights = [weights[n] for n,idx in enumerate(X_instance[0]) if idx != 0]
     dic_word_weigth = {word:weights[n] for n,word in enumerate(lst_corpus[0]) if word in tokenizer.word_index.keys()}
 
     ## plot
-    if len(dic_word_weigth) > 0:
+    if dic_word_weigth:
         dtf = pd.DataFrame.from_dict(dic_word_weigth, orient='index', columns=["score"])
         dtf.sort_values(by="score", ascending=True).tail(top).plot(kind="barh", legend=False, figsize=figsize).grid(axis='x')
         plt.show()
@@ -1161,11 +1177,14 @@ def explainer_attention(model, tokenizer, txt_instance, lst_ngrams_detectors=[],
     for word in lst_corpus[0]:
         weight = dic_word_weigth.get(word)
         if weight is not None:
-            text.append('<b><span style="background-color:rgba(100,149,237,' + str(weight) + ');">' + word + '</span></b>')
+            text.append(
+                f'<b><span style="background-color:rgba(100,149,237,{str(weight)});">'
+                + word
+                + '</span></b>'
+            )
         else:
             text.append(word)
-    text = ' '.join(text)
-    return text
+    return ' '.join(text)
 
 
 
@@ -1205,7 +1224,7 @@ Use Word2Vec to get a list of similar words of a given input words list
 def get_similar_words(lst_words, top, nlp=None):
     nlp = gensim_api.load("glove-wiki-gigaword-300") if nlp is None else nlp
     lst_out = lst_words
-    for tupla in nlp.most_similar(lst_words, topn=top):
+    for tupla in nlp.most_similar(lst_out, topn=top):
         lst_out.append(tupla[0])
     return list(set(lst_out))
 
@@ -1261,15 +1280,22 @@ def fit_lda(corpus, ngrams=1, grams_join=" ", lst_ngrams_detectors=[], n_topics=
     lda_model = gensim.models.ldamodel.LdaModel(corpus=dic_corpus, id2word=id2word, num_topics=n_topics, 
                                                 random_state=123, update_every=1, chunksize=100, 
                                                 passes=10, alpha='auto', per_word_topics=True)
-    
+
     ## output
     lst_dics = []
     for i in range(0, n_topics):
         lst_tuples = lda_model.get_topic_terms(i)
-        for tupla in lst_tuples:
-            lst_dics.append({"topic":i, "id":tupla[0], "word":id2word[tupla[0]], "weight":tupla[1]})
+        lst_dics.extend(
+            {
+                "topic": i,
+                "id": tupla[0],
+                "word": id2word[tupla[0]],
+                "weight": tupla[1],
+            }
+            for tupla in lst_tuples
+        )
     dtf_topics = pd.DataFrame(lst_dics, columns=['topic','id','word','weight'])
-    
+
     ## plot
     fig, ax = plt.subplots(figsize=figsize)
     sns.barplot(y="word", x="weight", hue="topic", data=dtf_topics, dodge=False, ax=ax).set_title('Main Topics')
@@ -1295,7 +1321,7 @@ def plot_w2v_cluster(dic_words=None, nlp=None, plot_type="2d", annotate=True, fi
         ## word embedding
         tot_words = [word for v in dic_words.values() for word in v]
         X = nlp[tot_words]
-        
+
         ## pca
         pca = manifold.TSNE(perplexity=40, n_components=int(plot_type[0]), init='pca')
         X = pca.fit_transform(X)
@@ -1308,7 +1334,7 @@ def plot_w2v_cluster(dic_words=None, nlp=None, plot_type="2d", annotate=True, fi
             dtf_group = pd.DataFrame(X[len(dtf):size], columns=columns, index=v)
             dtf_group["cluster"] = k
             dtf = dtf.append(dtf_group)
-        
+
         ## plot 2d
         if plot_type == "2d": 
             ax = fig.add_subplot()
@@ -1319,7 +1345,7 @@ def plot_w2v_cluster(dic_words=None, nlp=None, plot_type="2d", annotate=True, fi
                 for i in range(len(dtf)):
                     ax.annotate(dtf.index[i], xy=(dtf["x"].iloc[i],dtf["y"].iloc[i]), 
                                 xytext=(5,2), textcoords='offset points', ha='right', va='bottom')
-        
+
         ## plot 3d
         elif plot_type == "3d":
             from mpl_toolkits.mplot3d import Axes3D
@@ -1333,15 +1359,21 @@ def plot_w2v_cluster(dic_words=None, nlp=None, plot_type="2d", annotate=True, fi
                 for label, row in dtf[["x","y","z"]].iterrows():
                     x, y, z = row
                     ax.text(x, y, z, s=label)
-        
+
         plt.show()
-    
+
     except Exception as e:
         print("--- got error ---")
         print(e)
         word = str(e).split("'")[1]
         print("maybe you are looking for ... ")
-        print([k for k in list(nlp.vocab.keys()) if 1-nltk.jaccard_distance(set(word),set(k)) > 0.7])
+        print(
+            [
+                k
+                for k in list(nlp.vocab.keys())
+                if nltk.jaccard_distance(set(word), set(k)) < 1 - 0.7
+            ]
+        )
 
 
 
@@ -1362,10 +1394,9 @@ def utils_bert_embedding(txt, tokenizer, nlp, log=False):
     if log is True:
         print("tokens:", tokenizer.convert_ids_to_tokens(idx))
         print("ids   :", tokenizer.encode(txt))
-    idx = np.array(idx)[None,:]  
+    idx = np.array(idx)[None,:]
     embedding = nlp(idx)
-    X = np.array(embedding[0][0][1:-1])
-    return X
+    return np.array(embedding[0][0][1:-1])
 
 
 
@@ -1382,29 +1413,24 @@ Creates a feature matrix (num_docs x vector_size)
 def embedding_bert(x, tokenizer=None, nlp=None, log=False):
     tokenizer = transformers.BertTokenizer.from_pretrained('bert-base-uncased') if tokenizer is None else tokenizer
     nlp = transformers.TFBertModel.from_pretrained('bert-base-uncased') if nlp is None else nlp
-    
+
     ## single word --> vec (size,)
     if (type(x) is str) and (len(x.split()) == 1):
-        X = utils_bert_embedding(x, tokenizer, nlp, log).reshape(-1)
-    
-    ## list of words --> matrix (n, size)
+        return utils_bert_embedding(x, tokenizer, nlp, log).reshape(-1)
+
     elif (type(x) is list) and (type(x[0]) is str) and (len(x[0].split()) == 1):
-        X = utils_bert_embedding(x, tokenizer, nlp, log)
-    
-    ## list of lists of words --> matrix (n mean vectors, size)
+        return utils_bert_embedding(x, tokenizer, nlp, log)
+
     elif (type(x) is list) and (type(x[0]) is list):
         lst_mean_vecs = [utils_bert_embedding(lst, tokenizer, nlp, log).mean(0) for lst in x]
-        X = np.array(lst_mean_vecs)
-    
-    ## single text --> matrix (n words, size)
+        return np.array(lst_mean_vecs)
+
     elif (type(x) is str) and (len(x.split()) > 1):
-        X = utils_bert_embedding(x, tokenizer, nlp, log)
-        
-    ## list of texts --> matrix (n mean vectors, size)
+        return utils_bert_embedding(x, tokenizer, nlp, log)
+
     else:
         lst_mean_vecs = [utils_bert_embedding(txt, tokenizer, nlp, log).mean(0) for txt in x]
-        X = np.array(lst_mean_vecs)
-    return X
+        return np.array(lst_mean_vecs)
 
 
 
@@ -1441,19 +1467,19 @@ def tokenize_bert(corpus, tokenizer=None, maxlen=None):
     corpus_tokenized = ["[CLS] "+
                         " ".join(tokenizer.tokenize(re.sub(r'[^\w\s]+|\n', '', str(txt).lower().strip()))[:maxqnans])+
                         " [SEP] " for txt in corpus]
-   
+
     ## generate masks: [1, 1, 1, 1, 1, 1, 1, | (padding) 0, 0, 0, 0, 0, ...]
     masks = [[1]*len(txt.split(" ")) + [0]*(maxlen - len(txt.split(" "))) for txt in corpus_tokenized]
-    
+
     ## padding
     #corpus_tokenized = kprocessing.sequence.pad_sequences(corpus_tokenized, maxlen=maxlen, dtype=object, value='[PAD]')
     txt2seq = [txt + " [PAD]"*(maxlen-len(txt.split(" "))) if len(txt.split(" ")) != maxlen else txt for txt in corpus_tokenized]
-    
+
     ## generate idx: [101, 22, 35, 44, 50, 60, 102, 0, 0, 0, 0, 0, 0, ...]
     idx = [tokenizer.encode(seq.split(" ")) for seq in txt2seq]
-    
+
     ## generate segments: [0, 0, 0, 0, 0, 0, 1 [SEP], 0, 0, 0, 0, 2 [SEP], 0, ...]
-    segments = [] 
+    segments = []
     for seq in txt2seq:
         temp, i = [], 0
         for token in seq.split(" "):
@@ -1461,15 +1487,15 @@ def tokenize_bert(corpus, tokenizer=None, maxlen=None):
             if token == "[SEP]":
                 i += 1
         segments.append(temp)
-    
+
     ## check
-    genLength = set([len(seq.split(" ")) for seq in txt2seq])
+    genLength = {len(seq.split(" ")) for seq in txt2seq}
     if len(genLength) != 1: 
         print(genLength)
         raise Exception("--- texts are not of same size ---")
 
     X = [np.asarray(idx, dtype='int32'), np.asarray(masks, dtype='int32'), np.asarray(segments, dtype='int32')]
-    print("created tensor idx-masks-segments:", str(len(X))+"x "+str(X[0].shape))
+    print("created tensor idx-masks-segments:", f"{len(X)}x {str(X[0].shape)}")
     return X
 
 
@@ -1491,11 +1517,11 @@ Pre-trained Bert + Fine-tuning (transfer learning) with tf2 and transformers.
 def fit_bert_classif(X_train, y_train, X_test, encode_y=False, dic_y_mapping=None, model=None, epochs=100, batch_size=64, verbose=1):
     ## encode y
     if encode_y is True:
-        dic_y_mapping = {n:label for n,label in enumerate(np.unique(y_train))}
+        dic_y_mapping = dict(enumerate(np.unique(y_train)))
         inverse_dic = {v:k for k,v in dic_y_mapping.items()}
         y_train = np.array( [inverse_dic[y] for y in y_train] )
     print(dic_y_mapping)
-    
+
     ## model
     if model is None:
         ### inputs
@@ -1515,12 +1541,12 @@ def fit_bert_classif(X_train, y_train, X_test, encode_y=False, dic_y_mapping=Non
             layer.trainable = False
         model.compile(loss='sparse_categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
         print(model.summary())
-        
+
     ## train
     training = model.fit(x=X_train, y=y_train, batch_size=batch_size, epochs=epochs, shuffle=True, verbose=verbose, validation_split=0.3)
     if epochs > 1:
         utils_plot_keras_training(training)
-    
+
     ## test
     predicted_prob = model.predict(X_test)
     predicted = [dic_y_mapping[np.argmax(pred)] for pred in predicted_prob] if encode_y is True else [np.argmax(pred)]
@@ -1544,21 +1570,17 @@ def utils_cosine_sim(a, b, nlp=None):
     ## string vs string = score
     if (type(a) is str) or (type(b) is str):
         nlp = gensim_api.load("glove-wiki-gigaword-300") if nlp is None else nlp
-        cosine_sim = nlp.similarity(a,b)
-        
+        return nlp.similarity(a,b)
+
+    elif len(a.shape) == 1:
+        a = a.reshape(1,-1)
+        b = b.reshape(1,-1)
+        return metrics.pairwise.cosine_similarity(a, b)[0][0]
+
     else:
-        ## vector vs vector = score
-        if (len(a.shape) == 1) and (len(a.shape) == 1):
-            a = a.reshape(1,-1)
-            b = b.reshape(1,-1)
-            cosine_sim = metrics.pairwise.cosine_similarity(a, b)[0][0]  #np.dot(a,b)/(np.linalg.norm(a)*np.linalg.norm(b))
-        
-        ## matrix vs matrix = matrix (rows_a x rows_b)
-        else:
-            a = a.reshape(1,-1) if len(a.shape) == 1 else a
-            b = b.reshape(1,-1) if len(b.shape) == 1 else b
-            cosine_sim = metrics.pairwise.cosine_similarity(a, b)
-    return cosine_sim
+        a = a.reshape(1,-1) if len(a.shape) == 1 else a
+        b = b.reshape(1,-1) if len(b.shape) == 1 else b
+        return metrics.pairwise.cosine_similarity(a, b)
 
 
 
@@ -1603,12 +1625,12 @@ def explainer_similarity_classif(tokenizer, nlp, dic_clusters, txt_instance, tok
     y = np.concatenate([embedding_bert(v, tokenizer, nlp) for v in dic_clusters.values()])
     X = embedding_bert(txt_instance, tokenizer, nlp) if token_level is True else embedding_bert(txt_instance, tokenizer, nlp).mean(0).reshape(1,-1)
     M = np.concatenate([y,X])
-    
+
     ## pca
     pca = manifold.TSNE(perplexity=40, n_components=2, init='pca')
     M = pca.fit_transform(M)
     y, X = M[:len(y)], M[len(y):]
-    
+
     ## create dtf clusters
     dtf = pd.DataFrame()
     for k,v in dic_clusters.items():
@@ -1616,7 +1638,7 @@ def explainer_similarity_classif(tokenizer, nlp, dic_clusters, txt_instance, tok
         dtf_group = pd.DataFrame(y[len(dtf):size], columns=["x","y"], index=v)
         dtf_group["cluster"] = k
         dtf = dtf.append(dtf_group)
-        
+
     ## plot clusters
     fig, ax = plt.subplots(figsize=figsize)
     sns.scatterplot(data=dtf, x="x", y="y", hue="cluster", ax=ax)
@@ -1624,7 +1646,7 @@ def explainer_similarity_classif(tokenizer, nlp, dic_clusters, txt_instance, tok
     ax.set(xlabel=None, ylabel=None, xticks=[], xticklabels=[], yticks=[], yticklabels=[])
     for i in range(len(dtf)):
         ax.annotate(dtf.index[i], xy=(dtf["x"].iloc[i],dtf["y"].iloc[i]), xytext=(5,2), textcoords='offset points', ha='right', va='bottom')
-    
+
     ## add txt_instance
     if token_level is True:
         tokens = tokenizer.convert_ids_to_tokens(tokenizer.encode(txt_instance))[1:-1]
@@ -1638,7 +1660,7 @@ def explainer_similarity_classif(tokenizer, nlp, dic_clusters, txt_instance, tok
     else:
         ax.scatter(x=X[0][0], y=X[0][1], c="red", linewidth=10)
         ax.annotate("x", xy=(X[0][0],X[0][1]), ha='center', va='center', fontsize=25)
-    
+
     ## calculate similarity
     sim_matrix = utils_cosine_sim(X,y) 
 
@@ -1646,9 +1668,9 @@ def explainer_similarity_classif(tokenizer, nlp, dic_clusters, txt_instance, tok
     for row in range(sim_matrix.shape[0]):
         ### sorted {keyword:score}
         dic_sim = {n:sim_matrix[row][n] for n in range(sim_matrix.shape[1])}
-        dic_sim = {k:v for k,v in sorted(dic_sim.items(), key=lambda item:item[1], reverse=True)}
+        dic_sim = dict(sorted(dic_sim.items(), key=lambda item:item[1], reverse=True))
         ### plot lines
-        for k in dict(list(dic_sim.items())[0:top]).keys():
+        for k in dict(list(dic_sim.items())[:top]):
             p1 = [X[row][0], X[row][1]]
             p2 = [y[k][0], y[k][1]]
             ax.plot([p1[0],p2[0]], [p1[1],p2[1]], c="red", alpha=0.5)
@@ -1675,13 +1697,17 @@ def utils_string_matching(a, lst_b, threshold=None, top=None):
     X = vectorizer.fit_transform([a]+lst_b).toarray()
 
     ## cosine similarity (scores a vs lst_b)
-    lst_vectors = [vec for vec in X]
+    lst_vectors = list(X)
     cosine_sim = metrics.pairwise.cosine_similarity(lst_vectors)
     scores = cosine_sim[0][1:]
 
     ## match
     match_scores = scores if threshold is None else scores[scores >= threshold]
-    match_idxs = range(len(match_scores)) if threshold is None else [i for i in np.where(scores >= threshold)[0]] 
+    match_idxs = (
+        range(len(match_scores))
+        if threshold is None
+        else list(np.where(scores >= threshold)[0])
+    )
     match_strings = [lst_b[i] for i in match_idxs]
 
     ## dtf
@@ -1730,35 +1756,29 @@ Find the matching substrings in 2 strings.
 def utils_split_sentences(a, b):
     ## find clean matches
     match = difflib.SequenceMatcher(isjunk=None, a=a, b=b, autojunk=True)
-    lst_match = [block for block in match.get_matching_blocks() if block.size > 20]
-    
-    ## difflib didn't find any match
-    if len(lst_match) == 0:
-        lst_a, lst_b = nltk.sent_tokenize(a), nltk.sent_tokenize(b)
-    
-    ## work with matches
-    else:
+    if lst_match := [
+        block for block in match.get_matching_blocks() if block.size > 20
+    ]:
         first_m, last_m = lst_match[0], lst_match[-1]
 
         ### a
-        string = a[0 : first_m.a]
-        lst_a = [t for t in nltk.sent_tokenize(string)]
+        string = a[:first_m.a]
+        lst_a = list(nltk.sent_tokenize(string))
         for n in range(len(lst_match)):
             m = lst_match[n]
             string = a[m.a : m.a+m.size]
             lst_a.append(string)
-            if n+1 < len(lst_match):
-                next_m = lst_match[n+1]
-                string = a[m.a+m.size : next_m.a]
-                lst_a = lst_a + [t for t in nltk.sent_tokenize(string)]
-            else:
+            if n + 1 >= len(lst_match):
                 break
+            next_m = lst_match[n+1]
+            string = a[m.a+m.size : next_m.a]
+            lst_a = lst_a + list(nltk.sent_tokenize(string))
         string = a[last_m.a+last_m.size :]
-        lst_a = lst_a + [t for t in nltk.sent_tokenize(string)]
+        lst_a = lst_a + list(nltk.sent_tokenize(string))
 
         ### b
-        string = b[0 : first_m.b]
-        lst_b = [t for t in nltk.sent_tokenize(string)]
+        string = b[:first_m.b]
+        lst_b = list(nltk.sent_tokenize(string))
         for n in range(len(lst_match)):
             m = lst_match[n]
             string = b[m.b : m.b+m.size]
@@ -1766,12 +1786,15 @@ def utils_split_sentences(a, b):
             if n+1 < len(lst_match):
                 next_m = lst_match[n+1]
                 string = b[m.b+m.size : next_m.b]
-                lst_b = lst_b + [t for t in nltk.sent_tokenize(string)]
+                lst_b = lst_b + list(nltk.sent_tokenize(string))
             else:
                 break
         string = b[last_m.b+last_m.size :]
-        lst_b = lst_b + [t for t in nltk.sent_tokenize(string)]
-    
+        lst_b = lst_b + list(nltk.sent_tokenize(string))
+
+    else:
+        lst_a, lst_b = nltk.sent_tokenize(a), nltk.sent_tokenize(b)
+
     return lst_a, lst_b
 
 
@@ -1791,7 +1814,7 @@ def display_string_matching(a, b, both=True, sentences=True, titles=[]):
         lst_a, lst_b = utils_split_sentences(a, b)
     else:
         lst_a, lst_b = a.split(), b.split()       
-    
+
     ## highlight a
     first_text = []
     for i in lst_a:
@@ -1800,7 +1823,7 @@ def display_string_matching(a, b, both=True, sentences=True, titles=[]):
         else:
             first_text.append(i)
     first_text = ' '.join(first_text)
-    
+
     ## highlight b
     second_text = []
     if both is True:
@@ -1810,9 +1833,9 @@ def display_string_matching(a, b, both=True, sentences=True, titles=[]):
             else:
                 second_text.append(i)
     else:
-        second_text.append(b) 
+        second_text.append(b)
     second_text = ' '.join(second_text)
-    
+
     ## concatenate
     if len(titles) > 0:
         first_text = "<strong>"+titles[0]+"</strong><br>"+first_text
@@ -1820,8 +1843,7 @@ def display_string_matching(a, b, both=True, sentences=True, titles=[]):
         second_text = "<strong>"+titles[1]+"</strong><br>"+second_text
     else:
         second_text = "---"*65+"<br><br>"+second_text
-    final_text = first_text +'<br><br>'+ second_text
-    return final_text
+    return f'{first_text}<br><br>{second_text}'
 
 
 
@@ -1869,7 +1891,7 @@ def fit_seq2seq(X_train, y_train, model=None, X_embeddings=None, y_embeddings=No
         model = models.Model(inputs=[x_in, y_in], outputs=y_out, name="Seq2Seq")
         model.compile(loss='sparse_categorical_crossentropy', optimizer='rmsprop', metrics=['accuracy'])
         print(model.summary())
-        
+
     ## train
     training = model.fit(x=[X_train, y_train[:,:-1]], 
                          y=y_train.reshape(y_train.shape[0], y_train.shape[1], 1)[:,1:],
@@ -1877,24 +1899,22 @@ def fit_seq2seq(X_train, y_train, model=None, X_embeddings=None, y_embeddings=No
                          callbacks=[callbacks.EarlyStopping(monitor='val_loss', mode='min', verbose=1, patience=2)])
     if epochs > 1:
         utils_plot_keras_training(training)
-    
-    ## build prediction enconder-decoder model
-    if build_encoder_decoder is True:
-        lstm_units = lstm_units*2 if any("Bidirectional" in str(layer) for layer in model.layers) else lstm_units
-        ### encoder
-        encoder_model = models.Model(inputs=x_in, outputs=[x_out, state_h, state_c], name="Prediction_Encoder")
-        ### decoder
-        encoder_out = layers.Input(shape=(max_seq_lenght, lstm_units))
-        state_h, state_c = layers.Input(shape=(lstm_units,)), layers.Input(shape=(lstm_units,))
-        y_emb2 = layer_y_emb(y_in)
-        y_out2, new_state_h, new_state_c = layer_y_lstm(y_emb2, initial_state=[state_h, state_c])
-        predicted_prob = layer_dense(y_out2) 
-        decoder_model = models.Model(inputs=[y_in, encoder_out, state_h, state_c], 
-                                     outputs=[predicted_prob, new_state_h, new_state_c], 
-                                     name="Prediction_Decoder")
-        return training.model, encoder_model, decoder_model
-    else:
+
+    if build_encoder_decoder is not True:
         return training.model
+    lstm_units = lstm_units*2 if any("Bidirectional" in str(layer) for layer in model.layers) else lstm_units
+    ### encoder
+    encoder_model = models.Model(inputs=x_in, outputs=[x_out, state_h, state_c], name="Prediction_Encoder")
+    ### decoder
+    encoder_out = layers.Input(shape=(max_seq_lenght, lstm_units))
+    state_h, state_c = layers.Input(shape=(lstm_units,)), layers.Input(shape=(lstm_units,))
+    y_emb2 = layer_y_emb(y_in)
+    y_out2, new_state_h, new_state_c = layer_y_lstm(y_emb2, initial_state=[state_h, state_c])
+    predicted_prob = layer_dense(y_out2)
+    decoder_model = models.Model(inputs=[y_in, encoder_out, state_h, state_c], 
+                                 outputs=[predicted_prob, new_state_h, new_state_c], 
+                                 name="Prediction_Decoder")
+    return training.model, encoder_model, decoder_model
 
 
 
@@ -1978,8 +1998,7 @@ Summarizes corpus with TextRank.
 def textrank(corpus, ratio=0.2):
     if type(corpus) is str:
         corpus = [corpus]
-    lst_summaries = [gensim.summarization.summarize(txt, ratio=ratio) for txt in corpus]
-    return lst_summaries
+    return [gensim.summarization.summarize(txt, ratio=ratio) for txt in corpus]
 
 
 
@@ -1993,7 +2012,9 @@ Summarizes corpus with Bart.
 '''
 def bart(corpus, max_len):
     nlp = transformers.pipeline("summarization")
-    lst_summaries = [nlp(txt[:nlp.tokenizer.max_len], max_length=max_len
-                        )[0]["summary_text"].replace(" .", ".")
-                     for txt in corpus]
-    return lst_summaries
+    return [
+        nlp(txt[: nlp.tokenizer.max_len], max_length=max_len)[0][
+            "summary_text"
+        ].replace(" .", ".")
+        for txt in corpus
+    ]

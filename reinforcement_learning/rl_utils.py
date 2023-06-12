@@ -79,8 +79,10 @@ class NewEnv(gym.Env):
     Get new state after action or reset.
     '''
     def __state__(self):
-        state = np.append(self.data.iloc[self.current_step].values, [[self.balance, self.N, self.P0]])
-        return state
+        return np.append(
+            self.data.iloc[self.current_step].values,
+            [[self.balance, self.N, self.P0]],
+        )
     
     
     '''
@@ -106,26 +108,18 @@ class NewEnv(gym.Env):
     '''
     def __reward__(self):
         if self.balance > 0:
-            reward = 1
+            return 1
         elif self.balance < 0:
-            reward = -1
+            return -1
         else:
-            reward = 0
-        return reward
+            return 0
     
     
     '''
     Decide whether the episode is done after action.
     '''
     def __done__(self):
-        done = False
-        ## done by time limit
-        if self.current_step == 250:
-            done = True
-        ## done by failed task
-        elif self.balance < 0:
-            done = True
-        return done
+        return self.current_step == 250 or self.balance < 0
     
     
     '''
@@ -135,10 +129,9 @@ class NewEnv(gym.Env):
         info = {}
         ## done by time limit
         if self.current_step == 250:
-            info.update( {"time":"250 days have passed"} )
-        ## done by failed task
+            info["time"] = "250 days have passed"
         elif self.balance < 0:
-            info.update( {"balance":"broke"} )
+            info["balance"] = "broke"
         return info
     
     
@@ -198,7 +191,7 @@ class NewEnv(gym.Env):
 Query all the available envs in gym, filtered for names if provided.
 '''
 def get_gym_envs(lst_search=[]):
-    lst_envs = [env for env in gym.envs.registry.all()]
+    lst_envs = list(gym.envs.registry.all())
     dtf_envs = pd.DataFrame( [{"id":env.id, "from":env._entry_point} for env in lst_envs] )
     dtf_envs["from"] = dtf_envs["from"].apply(lambda x: x[:x.find(":")].replace("gym.envs.", ""))
     dtf_envs["from"] = dtf_envs["from"].apply(lambda x: x[:x.find(".")] if "." in x else x )
@@ -286,9 +279,19 @@ def env_random_play(env, episodes=10, rendering=None):
                 utils_env_render(env, render_type=render)
             ## log
             lst_logs.append( (episode+1, step, state, reward, cumulated_reward, done, info, goal) )
-    #env.close()
-    dtf_logs = pd.DataFrame(lst_logs, columns=['episode','steps','state','reward','cumulated_reward','done','info','goal'])
-    return dtf_logs
+    return pd.DataFrame(
+        lst_logs,
+        columns=[
+            'episode',
+            'steps',
+            'state',
+            'reward',
+            'cumulated_reward',
+            'done',
+            'info',
+            'goal',
+        ],
+    )
 
         
 
@@ -301,13 +304,19 @@ def plot_logs(dtf_logs, figsize=(10,5)):
     start, half, end = dtf_logs["episode"].min(), int(dtf_logs["episode"].mean()), dtf_logs["episode"].max()
     fig, ax = plt.subplots(nrows=1, ncols=3, sharex=False, sharey=True, figsize=figsize)
     ## start
-    dtf_logs[dtf_logs["episode"]==start].set_index("steps")["cumulated_reward"].plot(grid=True, ax=ax[0], title="episode "+str(start))
+    dtf_logs[dtf_logs["episode"] == start].set_index("steps")[
+        "cumulated_reward"
+    ].plot(grid=True, ax=ax[0], title=f"episode {str(start)}")
     ax[0].set(xlabel="step", ylabel="reward")
     ## half
-    dtf_logs[dtf_logs["episode"]==half].set_index("steps")["cumulated_reward"].plot(grid=True, ax=ax[1], title="episode "+str(half))
+    dtf_logs[dtf_logs["episode"] == half].set_index("steps")[
+        "cumulated_reward"
+    ].plot(grid=True, ax=ax[1], title=f"episode {half}")
     ax[1].set(xlabel="step")
     ## end
-    dtf_logs[dtf_logs["episode"]==end].set_index("steps")["cumulated_reward"].plot(grid=True, ax=ax[2], title="episode "+str(end))
+    dtf_logs[dtf_logs["episode"] == end].set_index("steps")[
+        "cumulated_reward"
+    ].plot(grid=True, ax=ax[2], title=f"episode {str(end)}")
     ax[2].set(xlabel="step")
     plt.show()
     
@@ -338,19 +347,19 @@ def trainAI(env, ai, episodes=1000, min_eploration=0.001, min_replay_memory_size
     render = True
     dic_rewards = {'episode':[], 'mean':[], 'max':[], 'min':[], "completion":[]}
     lst_rewards, lst_completion, lst_logs = [], [], []
-    
+
     ## episodes loop
     for episode in range(episodes):
         ### reset
         current_state = ai.preprocess_states(state=env.reset(), env=env)
         episode_reward, episode_complete = 0, 0
-        
+
         ### steps loop
         done = False
         step = 0
         while not done:
             step += 1
-            
+
             #### select next action and get reward
             action = ai.get_next_action(current_state)
             new_state, reward, done, info = env.step(action)          
@@ -360,31 +369,31 @@ def trainAI(env, ai, episodes=1000, min_eploration=0.001, min_replay_memory_size
             lst_logs.append( (episode+1, step, current_state, reward, done, info, goal) )
             if render == True:
                 env.render()
-            
+
             #### update Q
             if not done:
                 if ai.name == "Q":
                     ai.update_Q(current_state, action, reward, new_state, goal)
                 elif ai.name == "DQN":
                     ai.update_Q()
-            
+
             #### goal achieved ?
             elif goal:
                 episode_complete = episode_complete + 1
                 print("!!! Completed at episode", episode, ", reward:", reward, ", cum:", episode_reward)
-            
+
             #### next ep
             current_state = new_state
-          
+
         ### append reward
         lst_rewards.append(episode_reward)
         lst_completion.append(episode_complete)
-        
+
         ### decay epsilon
         ai.decay_exploration(min_eploration)
-        
+
         ### plot and stats settings
-        render = True if episode % plot_rate == 0 else False
+        render = episode % plot_rate == 0
         if episode % plot_rate == 0:
             dic_rewards["episode"].append(episode)
             dic_rewards["mean"].append( np.mean(lst_rewards[-episode:]) )
@@ -392,14 +401,23 @@ def trainAI(env, ai, episodes=1000, min_eploration=0.001, min_replay_memory_size
             dic_rewards["min"].append( min(lst_rewards[-episode:]) )
             dic_rewards["completion"].append( sum(lst_completion[-episode:]) )
             print(f'episode: {episode}, n completions: {sum(lst_completion[-episode:])}, mean reward: {np.mean(lst_rewards[-episode:])}, explore rate: {round(ai.explore_rate,4)}')
-        
+
     ## plot stats
     utils_plot_stats(dic_rewards)
     env.close()
-    
-    ## return logs dtf
-    dtf_logs = pd.DataFrame(lst_logs, columns=['episode','steps','state','reward','done','info','goal'])
-    return dtf_logs
+
+    return pd.DataFrame(
+        lst_logs,
+        columns=[
+            'episode',
+            'steps',
+            'state',
+            'reward',
+            'done',
+            'info',
+            'goal',
+        ],
+    )
 
 
 
@@ -457,14 +475,10 @@ class agentQ():
     
     
     def get_next_action(self, current_state):            
-        ## Explore: select a random action
         if np.random.uniform(0,1) < self.explore_rate:
-            action = np.random.randint(0, self.actions_space)
-        ## Exploit: select the action with max q_value
-        else:
-            current_qs = self.Q[current_state]
-            action = np.argmax( current_qs )
-        return action
+            return np.random.randint(0, self.actions_space)
+        current_qs = self.Q[current_state]
+        return np.argmax( current_qs )
     
     
     def decay_exploration(self, min_eploration):
@@ -523,8 +537,7 @@ class agentDQN():
 
     
     def preprocess_states(self, state, env):
-        state_preprocessed = np.reshape(state, [1, self.states_space])
-        return state_preprocessed
+        return np.reshape(state, [1, self.states_space])
     
     
     def dqn(self):
@@ -552,14 +565,10 @@ class agentDQN():
         
     
     def get_next_action(self, current_state):            
-        ## Explore: select a random action
         if np.random.uniform(0,1) < self.explore_rate:
-            action = np.random.randint(0, self.actions_space)
-        ## Exploit: select the action with max q_value
-        else:
-            current_qs = self.model.predict(current_state)[0]
-            action = np.argmax( current_qs )
-        return action
+            return np.random.randint(0, self.actions_space)
+        current_qs = self.model.predict(current_state)[0]
+        return np.argmax( current_qs )
     
     
     def decay_exploration(self, min_eploration):
@@ -570,30 +579,31 @@ class agentDQN():
     
     def update_Q(self): 
         ## start only if there are enough experiences
-        if len(self.memory) > self.min_replay_memory_size: 
-            ## batch of random samples from the memory
-            batch = random.sample(self.memory, self.batch_size)    
-            ## replay memory loop
-            lst_X = []
-            lst_y = []
-            for current_state, action, reward, new_state, goal in batch:
-                ### comupte new_qs
-                if not goal:
-                    new_qs = self.model.predict(new_state)[0]
-                    max_q_value = np.max( new_qs )
-                    new_q_value = reward + self.discount_rate * max_q_value
-                else:
-                    new_q_value = reward
-                ### update current_qs
-                current_qs = self.model.predict(current_state)
-                current_qs[0][action] = new_q_value
-                ### dataset
-                lst_X.append(current_state[0])
-                lst_y.append(current_qs[0])
-            ## fit
-            X = np.array(lst_X)  #array: batch_size x states_space
-            y = np.array(lst_y)  #array: batch_size x actions_space
-            self.model.fit(x=X, y=y, batch_size=self.batch_size, epochs=1, verbose=0, shuffle=False)
+        if len(self.memory) <= self.min_replay_memory_size:
+            return
+        ## batch of random samples from the memory
+        batch = random.sample(self.memory, self.batch_size)
+        ## replay memory loop
+        lst_X = []
+        lst_y = []
+        for current_state, action, reward, new_state, goal in batch:
+            ### comupte new_qs
+            if not goal:
+                new_qs = self.model.predict(new_state)[0]
+                max_q_value = np.max( new_qs )
+                new_q_value = reward + self.discount_rate * max_q_value
+            else:
+                new_q_value = reward
+            ### update current_qs
+            current_qs = self.model.predict(current_state)
+            current_qs[0][action] = new_q_value
+            ### dataset
+            lst_X.append(current_state[0])
+            lst_y.append(current_qs[0])
+        ## fit
+        X = np.array(lst_X)  #array: batch_size x states_space
+        y = np.array(lst_y)  #array: batch_size x actions_space
+        self.model.fit(x=X, y=y, batch_size=self.batch_size, epochs=1, verbose=0, shuffle=False)
               
           
 
@@ -672,15 +682,11 @@ class agentDDQN():
     
     
     def get_next_action(self, current_state):            
-        ## Explore: select a random action
         if np.random.uniform(0,1) < self.explore_rate:
-            action = np.random.randint(0, self.actions_space)
-        ## Exploit: select the action with max q_value
-        else:
-            X = np.array(current_state).reshape(-1, *current_state.shape) / self.img_scaler   #####<<<<<
-            lst_current_qs = self.simple_model.predict(X)[0]  #####<<<<<
-            action = np.argmax( lst_current_qs )
-        return action
+            return np.random.randint(0, self.actions_space)
+        X = np.array(current_state).reshape(-1, *current_state.shape) / self.img_scaler   #####<<<<<
+        lst_current_qs = self.simple_model.predict(X)[0]  #####<<<<<
+        return np.argmax( lst_current_qs )
     
     
     def update_Q(self, done=True, update_target_model_rate=5): 

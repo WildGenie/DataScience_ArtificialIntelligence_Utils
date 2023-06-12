@@ -89,9 +89,8 @@ def load_imgs(dirpath, ext=['.png','.jpg','.jpeg','.JPG'], plot=False, figsize=(
                 lst_imgs.append(img)
         except Exception as e:
             print("failed on:", file, "| error:", e)
-            pass
     if plot is True:
-        plot_imgs(lst_imgs[0:5], lst_titles=[], figsize=figsize)
+        plot_imgs(lst_imgs[:5], lst_titles=[], figsize=figsize)
     return lst_imgs
 
 
@@ -103,12 +102,16 @@ def utils_color_distributions(lst_imgs, lst_y=None, figsize=(5,3)):
     ## univariate
     if lst_y is None:
         fig, ax = plt.subplots(figsize=figsize)
-        ax.set(xlim=[0,256], xlabel='bin', ylabel="pixel count", title=str(len(lst_imgs))+" imgs")
+        ax.set(
+            xlim=[0, 256],
+            xlabel='bin',
+            ylabel="pixel count",
+            title=f"{len(lst_imgs)} imgs",
+        )
         ax.grid(True)
         for i,col in enumerate(("r","g","b")):
             hist = cv2.calcHist(images=lst_imgs, channels=[i], mask=None, histSize=[256], ranges=[0,256])
             ax.plot(hist, color=col)
-    ## bivariate
     else:
         ### create samples
         dic_samples = {y:[] for y in np.unique(lst_y)}
@@ -117,7 +120,12 @@ def utils_color_distributions(lst_imgs, lst_y=None, figsize=(5,3)):
         ### plot
         fig, ax = plt.subplots(nrows=len(dic_samples.keys()), ncols=1, sharex=True, figsize=figsize)
         for n,y in enumerate(dic_samples.keys()):
-            ax[n].set(xlim=[0,256], xlabel='bin', ylabel="pixel count", title=str(y)+": "+str(len(dic_samples[y]))+" imgs")
+            ax[n].set(
+                xlim=[0, 256],
+                xlabel='bin',
+                ylabel="pixel count",
+                title=f"{str(y)}: {len(dic_samples[y])} imgs",
+            )
             ax[n].grid(True)
             for i,col in enumerate(("r","g","b")):
                 hist = cv2.calcHist(images=dic_samples[y], channels=[i], mask=None, histSize=[256], ranges=[0,256])
@@ -133,39 +141,39 @@ def utils_preprocess_img(img, resize=256, denoise=False, remove_color=False, mor
     ## original
     img_processed = img
     lst_imgs = [img_processed]
-    lst_titles = ["original:  "+str(img_processed.shape)]
-    
+    lst_titles = [f"original:  {str(img_processed.shape)}"]
+
     ## scale
     #img_processed = img_processed/255
-    
+
     ## resize
     if resize is not False:
         img_processed = cv2.resize(img_processed, (resize,resize), interpolation=cv2.INTER_LINEAR)
         lst_imgs.append(img_processed)
-        lst_titles.append("resized:  "+str(img_processed.shape))
-    
+        lst_titles.append(f"resized:  {str(img_processed.shape)}")
+
     ## denoise (blur)
     if denoise is True:
         img_processed = cv2.GaussianBlur(img_processed, (5,5), 0)
         lst_imgs.append(img_processed)
-        lst_titles.append("blurred:  "+str(img_processed.shape))
-    
+        lst_titles.append(f"blurred:  {str(img_processed.shape)}")
+
     ## remove color
     if remove_color is True:
         img_processed = cv2.cvtColor(img_processed, cv2.COLOR_RGB2GRAY)
         lst_imgs.append(img_processed)
-        lst_titles.append("removed color:  "+str(img_processed.shape))
-    
+        lst_titles.append(f"removed color:  {str(img_processed.shape)}")
+
     ## morphology
     if morphology is True:
         if len(img_processed.shape) > 2:
             ret, mask = cv2.threshold(img_processed, 255/2, 255, cv2.THRESH_BINARY)
         else:
             mask = cv2.adaptiveThreshold(img_processed, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2)
-        img_processed = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((3,3),np.uint8), iterations=2)   
+        img_processed = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((3,3),np.uint8), iterations=2)
         lst_imgs.append(img_processed)
-        lst_titles.append("morphology:  "+str(img_processed.shape))
-    
+        lst_titles.append(f"morphology:  {str(img_processed.shape)}")
+
         ## segmentation (after morphology)
         if segmentation is True:
             background = cv2.dilate(img_processed, np.ones((3,3),np.uint8), iterations=3)
@@ -182,10 +190,10 @@ def utils_preprocess_img(img, resize=256, denoise=False, remove_color=False, mor
                 markers[unknown == 255] = 0
                 img_processed = cv2.watershed(cv2.resize(img, img_processed.shape, interpolation=cv2.INTER_LINEAR), markers)
                 lst_imgs.append(img_processed)
-                lst_titles.append("segmented:  "+str(img_processed.shape))
+                lst_titles.append(f"segmented:  {str(img_processed.shape)}")
     if (segmentation is True) and (morphology is False):
         print("--- need to do morphology to segment ---")
-    
+
     ## plot
     if plot is True:
         plot_imgs(lst_imgs, lst_titles, figsize)
@@ -208,7 +216,6 @@ def save_imgs(lst_imgs, dirpath, lst_names=None, i=0):
         except Exception as e:
             print("failed on:", i, "| error:", e)
             i += 1
-            pass
 
 
 
@@ -274,17 +281,25 @@ def train_yolo(lst_y, train_path="fs/training_yolo/", transfer_modelfile=""):
     ## train
     print("--- training ---")
     yolo.trainModel()
-    
+
     ## evaluate
     print("--- metrics ---")
-    metrics = yolo.evaluateModel(model_path=train_path+"models", json_path=train_path+"json/detection_config.json", 
-                                 iou_threshold=0.5, object_threshold=0.5, nms_threshold=0.5)
+    metrics = yolo.evaluateModel(
+        model_path=f"{train_path}models",
+        json_path=f"{train_path}json/detection_config.json",
+        iou_threshold=0.5,
+        object_threshold=0.5,
+        nms_threshold=0.5,
+    )
     print(metrics)
-    
+
     ## laod model
     print("--- loading model ---")
-    modelfile = os.listdir(train_path+"models/")[0]
-    return load_yolo(modelfile=train_path+"models/"+modelfile, confjson=train_path+"/json/detection_config.json")    
+    modelfile = os.listdir(f"{train_path}models/")[0]
+    return load_yolo(
+        modelfile=f"{train_path}models/{modelfile}",
+        confjson=f"{train_path}/json/detection_config.json",
+    )    
 
 
 
@@ -307,7 +322,7 @@ def utils_plot_keras_training(training):
     ax[1].set(title="Validation")
     ax22 = ax[1].twinx()
     ax[1].plot(training.history['val_loss'], color='blue')
-    ax22.plot(training.history['val_'+metric], color='green')
+    ax22.plot(training.history[f'val_{metric}'], color='green')
     ax[1].set_xlabel('Epochs')
     ax[1].set_ylabel('Loss', color='blue')
     ax22.set_ylabel(metric.capitalize(), color='green')
@@ -349,13 +364,13 @@ def fit_cnn(X_train, X_test, model=None, batch_size=32, epochs=100, verbose=0, s
             print("y multiclasses --> output layer: ", n_classes, "neurons with 'softmax' activation and 'categorical_crossentropy' loss")
             model.add( layers.Dense(units=n_classes, activation="softmax") )
             model.compile(loss="categorical_crossentropy", optimizer="adam", metrics=["accuracy"])
-    
+
     ## train
     print(model.summary())
     training = model.fit_generator(X_train, steps_per_epoch=batch_size, epochs=epochs, validation_data=X_test, verbose=verbose)
     if savepath is not None:
-        training.model.save(savepath+"cnn.h5")
-    
+        training.model.save(f"{savepath}cnn.h5")
+
     ## evaluate
     utils_plot_keras_training(training)
     return training.model
@@ -380,13 +395,13 @@ def fit_cnn_transfer_learning(X_train, X_test, base=None, new_layer=None, batch_
         output_neurons, activation, loss = 1, "sigmoid", "binary_crossentropy"
     else:
         output_neurons, activation, loss = n_classes, "softmax", "categorical_crossentropy"
-    
+
     ## starting layers
     if base is None:
         base = applications.resnet50.ResNet50(weights='imagenet', include_top=False, input_shape=img_shape) 
         for layer in base.layers:
             layer.trainable = False
-    
+
     ## check input shapes
     print("--- check ---")
     print("Base model requires input of shape:", base.input.shape[1:])
@@ -394,7 +409,7 @@ def fit_cnn_transfer_learning(X_train, X_test, base=None, new_layer=None, batch_
     if X_train.image_shape != base.input.shape[1:]:
         print(" !!! Stopped for shape error")
         return False    
-    
+
     ## add layers
     if new_layer is None:
         new_layer = base.output
@@ -402,17 +417,17 @@ def fit_cnn_transfer_learning(X_train, X_test, base=None, new_layer=None, batch_
         new_layer = layers.Dense(units=1024, activation='relu')(new_layer)
         new_layer = layers.Dropout(rate=0.5)(new_layer)
         new_layer = layers.Dense(units=output_neurons, activation=activation)(new_layer)
-    
+
     ## create the model
     model = models.Model(inputs=base.input, outputs=new_layer)
     model.compile(loss=loss, optimizer="adam", metrics=["accuracy"])
-   
+
     ## train
     print(model.summary())
     training = model.fit_generator(X_train, steps_per_epoch=batch_size, epochs=epochs, validation_data=X_test, verbose=verbose)
     if savepath is not None:
-        training.model.save(savepath+"cnn_transfer.h5")
-    
+        training.model.save(f"{savepath}cnn_transfer.h5")
+
     ## evaluate
     utils_plot_keras_training(training)
     return training.model 
@@ -477,7 +492,7 @@ Computes the similarity of two images.
 '''
 def utils_imgs_similarity(a, b, algo="sift", plot=False, plot_points=False, figsize=(20,13)):
     flags = 0 if plot_points is True else 2
-    
+
     if algo == "orb":
         detector = cv2.ORB_create()
         key_points_A, des_A = detector.detectAndCompute(a, None)
@@ -487,8 +502,12 @@ def utils_imgs_similarity(a, b, algo="sift", plot=False, plot_points=False, figs
         matches = sorted(full_matches, key=lambda x: x.distance)[:10]
         if plot is True:
             fig = cv2.drawMatches(a, key_points_A, b, key_points_B, matches, None, flags=flags)
-            utils_plot_img(fig, title="Matching Algorithm: "+algo.upper(), figsize=figsize)
-        
+            utils_plot_img(
+                fig,
+                title=f"Matching Algorithm: {algo.upper()}",
+                figsize=figsize,
+            )
+
     elif algo == "sift":
         detector = cv2.xfeatures2d.SIFT_create()
         key_points_A, des_A = detector.detectAndCompute(a, None)
@@ -496,7 +515,7 @@ def utils_imgs_similarity(a, b, algo="sift", plot=False, plot_points=False, figs
         matcher = cv2.BFMatcher()
         full_matches = matcher.knnMatch(des_A, des_B, k=2)
         matches = [[m1] for m1,m2 in full_matches if m1.distance < 0.75*m2.distance] #ratio test
-         
+
     elif algo == "flann":
         detector = cv2.xfeatures2d.SIFT_create()
         key_points_A, des_A = detector.detectAndCompute(a, None)
@@ -504,16 +523,18 @@ def utils_imgs_similarity(a, b, algo="sift", plot=False, plot_points=False, figs
         matcher = cv2.FlannBasedMatcher({"algorithm":0, "trees":5}, {"checks":50})
         full_matches = matcher.knnMatch(des_A, des_B, k=2)
         matches = [[m1] for m1,m2 in full_matches if m1.distance < 0.75*m2.distance] #ratio test
-        
+
     if (algo != "orb") and (plot is True): 
         #fig = cv2.drawMatchesKnn(a, key_points_A, b, key_points_B, matches, None, flags=flags)
-        matchesMask = [[0,0] for i in range(len(full_matches))]
+        matchesMask = [[0,0] for _ in range(len(full_matches))]
         for i,(m1,m2) in enumerate(full_matches):
             matchesMask[i] = [1,0] if m1.distance < 0.75*m2.distance else matchesMask[i]
         fig = cv2.drawMatchesKnn(a, key_points_A, b, key_points_B, full_matches, None,
                                  **{"matchColor":(0,255,0), "singlePointColor":(255,0,0), "matchesMask":matchesMask, "flags":flags})
-        utils_plot_img(fig, title="Matching Algorithm: "+algo.upper(), figsize=figsize)
-            
+        utils_plot_img(
+            fig, title=f"Matching Algorithm: {algo.upper()}", figsize=figsize
+        )
+
     return full_matches, matches
     
 
